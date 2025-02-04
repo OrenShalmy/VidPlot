@@ -130,10 +130,10 @@ def plot_data(video_file: str, output_json: str = None, save_plot: str = None):
     for frame_type, times in frame_types.items():
         if frame_type == "I":
             plt.scatter(times, [-50] * len(times), color="red", label="I-frames", marker="o", s=15, zorder=5)
-        # elif frame_type == "P":
-        #     plt.scatter(times, [-100] * len(times), color="blue", label="P-frames", marker="o", s=15, zorder=5)
-        # elif frame_type == "B":
-        #     plt.scatter(times, [-150] * len(times), color="green", label="B-frames", marker="o", s=15, zorder=5)
+        elif frame_type == "P":
+            plt.scatter(times, [-100] * len(times), color="blue", label="P-frames", marker="o", s=15, zorder=5)
+        elif frame_type == "B":
+            plt.scatter(times, [-150] * len(times), color="green", label="B-frames", marker="o", s=15, zorder=5)
 
     # Format x-axis with timecodes
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: str(timedelta(seconds=int(x)))))
