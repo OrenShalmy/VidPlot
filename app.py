@@ -39,11 +39,9 @@ def upload_video():
         public_filepath = os.path.join(public_upload_folder, filename)
         file.save(public_filepath)
         
-        # Define the output JSON file path
         json_filename = f"{os.path.splitext(filename)[0]}_data.json"
         output_json_path = os.path.join(app.config['OUTPUT_FOLDER'], json_filename)
         
-        # Construct the ffprobe command
         ffprobe_cmd = (
             f'ffprobe -hide_banner -loglevel error '
             f'-select_streams v -threads 4 -print_format json '
@@ -57,8 +55,6 @@ def upload_video():
             os.remove(public_filepath)
             return jsonify({"error": "Error processing video", "details": str(e)}), 500
 
-        # Do not remove the uploaded file if you need to play it.
-        # Instead, generate its URL:
         video_url = url_for('static', filename=f'media/uploads/{filename}')
         json_url = url_for('static', filename=f'media/logs/{json_filename}')
         return jsonify({"message": "File processed successfully", "json_url": json_url, "video_url": video_url})

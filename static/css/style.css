@@ -22,6 +22,7 @@ th, td {
 }
 th {
   background-color: #333;
+  display: none;
 }
 div.toggles { /* Style the toggle container */
   visibility: hidden;
@@ -37,16 +38,20 @@ div.toggles label {
   background-color: #333;
 }
 #dropArea {
-  width: 100%;
-  height: 200px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);  align-items: center;
+  height: 50%;
+  width: 50%;
   border: 2px dashed #777;
   border-radius: 10px;
   text-align: center;
-  padding: 50px, 50px, 50px, 50px;
   cursor: pointer;
   color: #aaa;
   background-color: #222;
   transition: 0.3s;
+  justify-content: center;
 }
 
 #dropArea p {

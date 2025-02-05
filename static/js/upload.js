@@ -48,15 +48,20 @@ document.addEventListener("DOMContentLoaded", function () {
             if (result.error) {
                 alert("Upload error: " + result.error);
             } else {
-                alert(result.message);
+                // alert(result.message);
     
                 // Hide uploader, show video player
                 dropArea.style.display = "none";
                 videoPlayer.style.display = "block"; // Make sure the video player is shown
-                // table.style.display = "block";
-                // Set and load the video
+
                 videoSource.src = result.video_url;
                 videoPlayer.load();
+
+                videoPlayer.addEventListener("loadedmetadata", function() {
+                    document.querySelectorAll("th").forEach(function(th) {
+                      th.style.display = "table-cell";
+                    });
+                  });
     
                 // Fetch and update Plotly chart
                 fetch(result.json_url)
