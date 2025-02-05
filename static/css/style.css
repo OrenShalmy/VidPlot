@@ -42,7 +42,7 @@ div.toggles label {
   border: 2px dashed #777;
   border-radius: 10px;
   text-align: center;
-  padding: 50px;
+  padding: 50px, 50px, 50px, 50px;
   cursor: pointer;
   color: #aaa;
   background-color: #222;
