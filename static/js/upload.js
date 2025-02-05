@@ -1,10 +1,44 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const uploadForm = document.getElementById("uploadForm");
+    const dropArea = document.getElementById("dropArea");
+    const videoUpload = document.getElementById("videoUpload");
+    const videoPlayer = document.getElementById("videoPlayer");
+    const videoSource = document.getElementById("videoSource");
 
-    uploadForm.addEventListener("submit", function (event) {
-        event.preventDefault();
-        const formData = new FormData(uploadForm);
+    // Prevent default behavior (Prevent opening the file)
+    ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
+        dropArea.addEventListener(event, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
 
+    // Highlight drop area when a file is dragged over
+    ["dragenter", "dragover"].forEach(event => {
+        dropArea.addEventListener(event, () => dropArea.classList.add("highlight"));
+    });
+
+    ["dragleave", "drop"].forEach(event => {
+        dropArea.addEventListener(event, () => dropArea.classList.remove("highlight"));
+    });
+
+    // Handle dropped file
+    dropArea.addEventListener("drop", (event) => {
+        const file = event.dataTransfer.files[0];
+        if (file) handleFile(file);
+    });
+
+    // Handle file selection via click
+    dropArea.addEventListener("click", () => videoUpload.click());
+
+    videoUpload.addEventListener("change", (event) => {
+        const file = event.target.files[0];
+        if (file) handleFile(file);
+    });
+
+    function handleFile(file) {
+        const formData = new FormData();
+        formData.append("video", file);
+    
         fetch("/upload", {
             method: "POST",
             body: formData,
@@ -15,14 +49,16 @@ document.addEventListener("DOMContentLoaded", function () {
                 alert("Upload error: " + result.error);
             } else {
                 alert(result.message);
-                
-                // Update the video source with the uploaded video
-                const videoSource = document.getElementById("videoSource");
+    
+                // Hide uploader, show video player
+                dropArea.style.display = "none";
+                videoPlayer.style.display = "block"; // Make sure the video player is shown
+    
+                // Set and load the video
                 videoSource.src = result.video_url;
-                const videoPlayer = document.getElementById("videoPlayer");
-                videoPlayer.load(); // Reload the video player
-
-                // Fetch and use the JSON file to update the Plotly chart
+                videoPlayer.load();
+    
+                // Fetch and update Plotly chart
                 fetch(result.json_url)
                     .then(response => response.json())
                     .then(jsonData => {
@@ -32,8 +68,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     .catch(err => console.error("Error fetching JSON:", err));
             }
         })
-        .catch(err => {
-            console.error("Upload error:", err);
-        });
-    });
+        .catch(err => console.error("Upload error:", err));
+    }    
 });

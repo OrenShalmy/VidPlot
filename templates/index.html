@@ -18,17 +18,22 @@
     <button type="submit">Upload</button>
   </form>
 
-  <!-- Video Player -->
-  <video id="videoPlayer" controls>
-      <!-- The default video source -->
-      <source id="videoSource" src="{{ url_for('static', filename='media/bbb_sunflower_1080p_30fps_short.mp4') }}" type="video/mp4">
-      Your browser does not support the video tag.
-  </video>
+<!-- Drag and Drop Uploader -->
+<div id="dropArea">
+    <p>Drag & Drop a video file here or click to select</p>
+    <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
+</div>
+
+<!-- Video Player (Initially Hidden) -->
+<video id="videoPlayer" controls hidden>
+    <source id="videoSource" src="" type="video/mp4">
+    Your browser does not support the video tag.
+</video>
   
   <!-- Plotly Chart Container -->
   <div id="frameChart"></div>
   
-  <!-- Toggle Controls -->
+  <!-- frame type checkboxes -->
   <div class="toggles">  
     <label><input type="checkbox" id="iFrameToggle" checked> I-Frames</label>
     <label><input type="checkbox" id="pFrameToggle" checked> P-Frames</label>

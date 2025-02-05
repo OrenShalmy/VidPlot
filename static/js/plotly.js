@@ -139,9 +139,10 @@
         }, [0, 1, 2]);
       }
 
-      iFrameToggle.addEventListener('change', updateVisibility);
-      pFrameToggle.addEventListener('change', updateVisibility);
-      bFrameToggle.addEventListener('change', updateVisibility);
+    //frame type checkboxes
+    //   iFrameToggle.addEventListener('change', updateVisibility);
+    //   pFrameToggle.addEventListener('change', updateVisibility);
+    //   bFrameToggle.addEventListener('change', updateVisibility);
 
       // Calculate frame duration based on stream frame rate (e.g., "30000/1001")
       const frameRateStr = jsonData.streams[0].r_frame_rate;
