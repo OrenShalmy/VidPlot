@@ -1511,11 +1511,16 @@
             "pict_type": "P"
         }
     ],
-    "programs": [],
-    "stream_groups": [],
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
     "streams": [
         {
-            "r_frame_rate": "30/1"
+            "r_frame_rate": "30/1",
+            "bit_rate": "4847721"
         }
     ]
 }
