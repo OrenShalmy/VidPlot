@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 // Hide uploader, show video player
                 dropArea.style.display = "none";
                 videoPlayer.style.display = "block"; // Make sure the video player is shown
-    
+                // table.style.display = "block";
                 // Set and load the video
                 videoSource.src = result.video_url;
                 videoPlayer.load();
