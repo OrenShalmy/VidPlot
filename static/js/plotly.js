@@ -76,31 +76,32 @@
         y0: kbps,
         y1: kbps,
         line: {
-            color: 'red',
+            color: '#f200ff',
             width: 2,
             dash: 'dash'
-        }
+        },
         }
     ],
-    annotations: [
-        {
-        xref: 'paper',
-        x: 0,  // position it just to the right of the plot area
-        y: kbps,
-        yref: 'y',
-        text: `Average Bitrate: ${kbps} kb/s`,
-        showarrow: false,
-        yshift: 10,
-        font: {
-            color: 'red'
-        },
-        align: 'right'
-        }
-    ]
+    // annotations: [
+    //     {
+    //     xref: 'paper',
+    //     x: 0,  // position it just to the right of the plot area
+    //     y: kbps,
+    //     yref: 'y',
+    //     text: `Average Bitrate: ${kbps} kb/s`,
+    //     showarrow: false,
+    //     yshift: 10,
+    //     font: {
+    //         color: 'red'
+    //     },
+    //     align: 'right'
+    //     }
+    // ]
+
     };
 
       // Create the Plotly chart
-      Plotly.newPlot('frameChart', [iTrace, pTrace, bTrace], layout)
+      Plotly.newPlot('frameChart', [iTrace, pTrace, bTrace], layout, {displaylogo: false})
         .then(() => {
           const chartDiv = document.getElementById('frameChart');
           chartDiv.on('plotly_click', function(data) {
