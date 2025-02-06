@@ -1,13 +1,22 @@
 // Function to create the Plotly chart and table from the JSON data.
     function setupPlotlyChart(jsonData) {
-      // Separate data by frame type
+
+        // Separate data by frame type
       const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
       const pFrames = jsonData.frames.filter(frame => frame.pict_type === 'P');
       const bFrames = jsonData.frames.filter(frame => frame.pict_type === 'B');
 
-      // Average bitrate
+      // Get media info
       const bitRate = jsonData.streams[0].bit_rate;
       const kbps = bitRate / 1024;
+      const width = jsonData.streams[0].width;
+      const height = jsonData.streams[0].height;
+      const fps = parseFloat(jsonData.streams[0].r_frame_rate).toFixed(2);
+      const duration = jsonData.streams[0].duration;
+      const pixFormat = jsonData.streams[0].pix_fmt;
+      const codecName = jsonData.streams[0].codec_name;
+      const profile = jsonData.streams[0].profile;
+      const level = jsonData.streams[0].level;
 
       // Create traces for each frame type
       const iTrace = {
@@ -139,28 +148,6 @@
         }, [0, 1, 2]);
       }
 
-    //frame type checkboxes
-    //   iFrameToggle.addEventListener('change', updateVisibility);
-    //   pFrameToggle.addEventListener('change', updateVisibility);
-    //   bFrameToggle.addEventListener('change', updateVisibility);
-
-      // Calculate frame duration based on stream frame rate (e.g., "30000/1001")
-      const frameRateStr = jsonData.streams[0].r_frame_rate;
-      const parts = frameRateStr.split('/');
-      const frameRate = parseInt(parts[0]) / parseInt(parts[1]); // frames per second
-      const frameDuration = 1 / frameRate; // duration of one frame in seconds
-
-      // Listen for arrow key events to allow frame-by-frame seeking
-      document.addEventListener('keydown', function(event) {
-        if (event.key === 'ArrowRight') {
-          videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + frameDuration);
-          event.preventDefault();
-        } else if (event.key === 'ArrowLeft') {
-          videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - frameDuration);
-          event.preventDefault();
-        }
-      });
-
       // Update chart and table highlighting on video time update
       videoPlayer.addEventListener('timeupdate', function() {
         const currentTime = videoPlayer.currentTime;
@@ -209,7 +196,6 @@
         }
       }
 
-      // Optional: For continuous UI updates during normal playback, you might use:
       videoPlayer.addEventListener('play', () => {
         function updateLoop(now, metadata) {
           if (!videoPlayer.paused && !videoPlayer.ended) {
