@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     .then(response => response.json())
                     .then(jsonData => {
                         console.log("FFprobe JSON data:", jsonData);
+                        updateOverlayText(jsonData);
                         setupPlotlyChart(jsonData);
                     })
                     .catch(err => console.error("Error fetching JSON:", err));

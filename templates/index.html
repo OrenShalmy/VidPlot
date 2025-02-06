@@ -7,16 +7,8 @@
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
   <script src="{{ url_for('static', filename='js/plotly.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-
 </head>
 <body>
-
-  <!-- Video Upload Form -->
-  <!-- <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-    <label for="videoUpload">Upload a video: </label>
-    <input type="file" id="videoUpload" name="video" accept="video/*">
-    <button type="submit">Upload</button>
-  </form> -->
 
 <!-- Drag and Drop Uploader -->
 <div id="dropArea">
@@ -25,11 +17,15 @@
 </div>
 
 <!-- Video Player (Initially Hidden) -->
-<video id="videoPlayer" controls hidden>
-    <source id="videoSource" src="" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
-  
+<div id="videoContainer">
+    <video id="videoPlayer" controls hidden>
+      <source id="videoSource" src="" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+    <div id="overlayText"></div>
+  </div>
+  <script src="{{ url_for('static', filename='js/mediainfo.js') }}"></script>
+
   <!-- Plotly Chart Container -->
   <div id="frameChart"></div>
   
