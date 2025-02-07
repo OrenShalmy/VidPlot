@@ -41,21 +41,25 @@ div.toggles label {
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);  align-items: center;
   height: 50%;
   width: 50%;
-  border: 2px dashed #777;
-  border-radius: 10px;
-  text-align: center;
+  transform: translate(-50%, -50%);  align-items: center;
+  border: 10px dashed #777;
+  border-radius: 20px;
   cursor: pointer;
   color: #aaa;
   background-color: #222;
   transition: 0.3s;
   justify-content: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 #dropArea p {
-  font-size: 18px;
+  font-size: 70px;
+  text-align: center;
+  padding: auto;
 }
 
 #dropArea.highlight {

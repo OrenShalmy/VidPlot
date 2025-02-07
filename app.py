@@ -46,7 +46,7 @@ def upload_video():
             f'ffprobe -hide_banner -loglevel error '
             f'-select_streams v -threads 4 -print_format json '
             f'-show_entries "frame=pict_type,best_effort_timestamp_time,pkt_size" '
-            f'-show_entries "stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height" ' # Added width,height
+            f'-show_entries "stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height" '
             f'"{public_filepath}" > "{output_json_path}"'
             )
         
