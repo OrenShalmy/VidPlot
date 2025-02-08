@@ -4,46 +4,55 @@ body {
   font-family: sans-serif;
   font-size: 10px;
 }
+
 #frameChart {
   width: 90%;
   margin: 0px auto 10px auto;
   max-height: 500px;
   cursor: pointer; /* Indicate clickability */
 }
+
 table {
   width: 80%;
   margin: 20px auto;
   border-collapse: collapse;
 }
+
 th, td {
   border: 1px solid #444;
   padding: 8px;
   text-align: center;
 }
+
 th {
   background-color: #333;
   display: none;
 }
+
 div.toggles { /* Style the toggle container */
   visibility: hidden;
   width: 80%;
   margin: 10px auto;
   text-align: center; /* Center the toggles */
 }
+
 div.toggles label {
   margin: 0 10px; /* Add some spacing between toggles */
 }
+
 /* CSS for highlighted table row */
 .highlighted {
   background-color: #333;
 }
+
 #dropArea {
   position: fixed;
   top: 50%;
   left: 50%;
   height: 50%;
   width: 50%;
-  transform: translate(-50%, -50%);  align-items: center;
+  transform: translate(-50%, -50%);  
+  align-items: center;
   border: 10px dashed #777;
   border-radius: 20px;
   cursor: pointer;
@@ -88,4 +97,15 @@ div.toggles label {
   color: rgb(255, 255, 255);
   font-size: 20px;
   text-align: left;
+}
+
+#overlayText table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#overlayText th, #overlayText td {
+  padding: 10px;
+  border-bottom: 1px solid #444;
+  text-align: center;
 }
