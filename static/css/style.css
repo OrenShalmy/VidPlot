@@ -78,23 +78,46 @@ div.toggles label {
 
 #videoContainer {
   position: relative;
+  display: flex;
+  width: 90%;
+  margin: 0 auto;
+  gap: 20px;
+  align-items: stretch;
 }
 
 #videoPlayer {
-  width: 100%;
+  flex: 7;
   max-width: 720px;
   display: none; /* Hide the video player completely until a file is uploaded */
-  margin: 0 auto;
+  height: auto;
+  min-height: 400px;
 }
 
 #overlayText {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 73%;
-  transform: none;
+  flex: 3;
+  position: relative;
+  min-height: 400px;
+  background-color: rgba(40, 40, 40, 0.591);
+  padding: 15px;
   color: rgb(255, 255, 255);
   font-size: 20px;
   text-align: left;
+  overflow-y: auto;
+  display: none; /* Hide initially, just like videoPlayer */
+}
+
+@media (max-width: 768px) {
+  #videoContainer {
+    flex-direction: column;
+  }
+  
+  #videoPlayer,
+  #overlayText {
+    width: 100%;
+    flex: none;
+  }
+  
+  #overlayText {
+    min-height: 200px;
+  }
 }

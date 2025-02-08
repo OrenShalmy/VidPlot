@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoUpload = document.getElementById("videoUpload");
     const videoPlayer = document.getElementById("videoPlayer");
     const videoSource = document.getElementById("videoSource");
+    const overlayText = document.getElementById("overlayText");
 
     // Prevent default behavior (Prevent opening the file)
     ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
@@ -50,9 +51,10 @@ document.addEventListener("DOMContentLoaded", function () {
             } else {
                 // alert(result.message);
     
-                // Hide uploader, show video player
+                // Hide uploader, show video player and overlay text
                 dropArea.style.display = "none";
                 videoPlayer.style.display = "block"; // Make sure the video player is shown
+                overlayText.style.display = "block";
 
                 videoSource.src = result.video_url;
                 videoPlayer.load();
