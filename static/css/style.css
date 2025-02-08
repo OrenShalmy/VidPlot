@@ -98,14 +98,3 @@ div.toggles label {
   font-size: 20px;
   text-align: left;
 }
-
-#overlayText table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-#overlayText th, #overlayText td {
-  padding: 10px;
-  border-bottom: 1px solid #444;
-  text-align: center;
-}
