@@ -6,11 +6,12 @@ body {
 }
 
 #frameChart {
-  width: 90%;
-  margin: 0px auto 10px auto;
+  width: 90% !important; /* Match videoContainer width */
+  margin: 20px auto;
   max-height: 500px;
-  cursor: pointer; /* Indicate clickability */
+  cursor: pointer;
 }
+
 
 table {
   width: 80%;

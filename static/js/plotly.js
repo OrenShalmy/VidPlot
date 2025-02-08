@@ -60,12 +60,14 @@
           font: { color: '#e0e0e0' }
         },
         height: 400,
+        autosize: true,
         margin: {
           l: 50,
           r: 50,
           t: 10,
           b: 40
         },
+
         shapes: [
         {
         type: 'line',
@@ -101,7 +103,11 @@
     };
 
       // Create the Plotly chart
-      Plotly.newPlot('frameChart', [iTrace, pTrace, bTrace], layout, {displaylogo: false})
+      Plotly.newPlot('frameChart', [iTrace, pTrace, bTrace], layout, {
+        displaylogo: false,
+        responsive: true,
+        useResizeHandler: true
+      })
         .then(() => {
           const chartDiv = document.getElementById('frameChart');
           chartDiv.on('plotly_click', function(data) {

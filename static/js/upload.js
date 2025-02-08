@@ -49,11 +49,9 @@ document.addEventListener("DOMContentLoaded", function () {
             if (result.error) {
                 alert("Upload error: " + result.error);
             } else {
-                // alert(result.message);
-    
-                // Hide uploader, show video player and overlay text
+                
                 dropArea.style.display = "none";
-                videoPlayer.style.display = "block"; // Make sure the video player is shown
+                videoPlayer.style.display = "block";
                 overlayText.style.display = "block";
 
                 videoSource.src = result.video_url;
@@ -65,7 +63,6 @@ document.addEventListener("DOMContentLoaded", function () {
                     });
                   });
     
-                // Fetch and update Plotly chart
                 fetch(result.json_url)
                     .then(response => response.json())
                     .then(jsonData => {
