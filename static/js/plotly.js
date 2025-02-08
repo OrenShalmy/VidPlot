@@ -9,6 +9,27 @@
         const frameRate = eval(jsonData.streams[0].r_frame_rate); // converts "30/1" to 30
         const frameDuration = 1 / frameRate;
 
+        // Add keyboard controls for frame navigation
+        document.addEventListener('keydown', (event) => {
+            if (!videoPlayer.paused) {
+                videoPlayer.pause(); // Pause video if playing
+            }
+            
+            switch(event.key) {
+                case 'ArrowLeft':
+                    event.preventDefault();
+                    videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - frameDuration);
+                    break;
+                case 'ArrowRight':
+                    event.preventDefault();
+                    videoPlayer.currentTime = Math.min(
+                        videoPlayer.duration,
+                        videoPlayer.currentTime + frameDuration
+                    );
+                    break;
+            }
+        });
+
         // Separate data by frame type
       const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
       const pFrames = jsonData.frames.filter(frame => frame.pict_type === 'P');
