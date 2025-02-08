@@ -1,5 +1,13 @@
 // Function to create the Plotly chart and table from the JSON data.
     function setupPlotlyChart(jsonData) {
+        // Helper function to convert bytes to megabits per second
+        function bytesToMbps(bytes, duration) {
+            return (bytes * 8) / (1024 * 1024 * duration); // Convert bytes to megabits per second
+        }
+
+        // Calculate frame duration (assuming constant frame rate)
+        const frameRate = eval(jsonData.streams[0].r_frame_rate); // converts "30/1" to 30
+        const frameDuration = 1 / frameRate;
 
         // Separate data by frame type
       const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
@@ -8,47 +16,47 @@
 
       // Get media info
       const bitRate = jsonData.streams[0].bit_rate;
-      const kbps = bitRate / 1024;
+      const mbps = bitRate / (1024 * 1024);
 
       // Create traces for each frame type
       const iTrace = {
         x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: iFrames.map(f => parseInt(f.pkt_size)),
+        y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
         mode: 'lines',
         type: 'bar',
         name: 'I-Frames',
         marker: { color: '#0161ff', size: 4 },
         line: { color: '#0161ff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Packet Size: %{y}<br>Type: I"
+        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
       };
 
       const pTrace = {
         x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: pFrames.map(f => parseInt(f.pkt_size)),
+        y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
         mode: 'lines',
         type: 'bar',
         name: 'P-Frames',
         marker: { color: '#70a6ff', size: 4 },
         line: { color: '#70a6ff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Packet Size: %{y}<br>Type: P"
+        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
       };
 
       const bTrace = {
         x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: bFrames.map(f => parseInt(f.pkt_size)),
+        y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
         mode: 'lines',
         type: 'bar',
         name: 'B-Frames',
         marker: { color: '#ffffff', size: 4 },
         line: { color: '#ffffff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Packet Size: %{y}<br>Type: B"
+        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
       };
 
       // Plot general layout
       const layout = {
         title: '',
         xaxis: { title: 'Timestamp (seconds)' },
-        yaxis: { title: 'Packet Size', gridcolor: '#444' },
+        yaxis: { title: 'Frame Size (Mb/s)', gridcolor: '#444' },
         plot_bgcolor: '#282828',
         paper_bgcolor: '#1e1e1e',
         font: { color: '#e0e0e0' },
@@ -75,8 +83,8 @@
         x0: 0,
         x1: 1,
         yref: 'y',
-        y0: kbps,
-        y1: kbps,
+        y0: mbps,
+        y1: mbps,
         line: {
             color: '#f200ff',
             width: 2,
@@ -127,8 +135,8 @@
         const pktSizeCell = row.insertCell();
         const pictTypeCell = row.insertCell();
 
-        timestampCell.textContent = frame.best_effort_timestamp_time;
-        pktSizeCell.textContent = frame.pkt_size;
+        timestampCell.textContent = parseFloat(frame.best_effort_timestamp_time).toFixed(4);
+        pktSizeCell.textContent = bytesToMbps(parseInt(frame.pkt_size), frameDuration).toFixed(2) + ' Mb/s';
         pictTypeCell.textContent = frame.pict_type;
       });
 

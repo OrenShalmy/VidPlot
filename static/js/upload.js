@@ -5,6 +5,15 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoSource = document.getElementById("videoSource");
     const overlayText = document.getElementById("overlayText");
 
+    // Add progress bar HTML to dropArea
+    dropArea.innerHTML += `
+        <div id="uploadProgress">
+            <div class="progress-bar"></div>
+        </div>
+    `;
+    const progressBar = document.querySelector('#uploadProgress .progress-bar');
+    const progressContainer = document.getElementById('uploadProgress');
+
     // Prevent default behavior (Prevent opening the file)
     ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
         dropArea.addEventListener(event, (e) => {
@@ -39,18 +48,31 @@ document.addEventListener("DOMContentLoaded", function () {
     function handleFile(file) {
         const formData = new FormData();
         formData.append("video", file);
+        
+        // Show progress bar
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
     
-        fetch("/upload", {
-            method: "POST",
-            body: formData,
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.error) {
-                alert("Upload error: " + result.error);
-            } else {
-                
-                dropArea.style.display = "none";
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/upload', true);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percentCompleted = Math.round((event.loaded * 100) / event.total);
+                progressBar.style.width = percentCompleted + '%';
+            }
+        };
+
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                const result = JSON.parse(xhr.responseText);
+                if (result.error) {
+                    alert("Upload error: " + result.error);
+                } else {
+                    // Hide progress bar
+                    progressContainer.style.display = 'none';
+                    
+                    dropArea.style.display = "none";
                 videoPlayer.style.display = "block";
                 overlayText.style.display = "block";
 
@@ -59,9 +81,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 videoPlayer.addEventListener("loadedmetadata", function() {
                     document.querySelectorAll("th").forEach(function(th) {
-                      th.style.display = "table-cell";
+                        th.style.display = "table-cell";
                     });
-                  });
+                });
     
                 fetch(result.json_url)
                     .then(response => response.json())
@@ -71,8 +93,16 @@ document.addEventListener("DOMContentLoaded", function () {
                         setupPlotlyChart(jsonData);
                     })
                     .catch(err => console.error("Error fetching JSON:", err));
+                }
             }
-        })
-        .catch(err => console.error("Upload error:", err));
+        };
+
+        xhr.onerror = function() {
+            console.error("Upload error:", xhr.statusText);
+            // Hide progress bar on error
+            progressContainer.style.display = 'none';
+        };
+
+        xhr.send(formData);
     }    
 });
