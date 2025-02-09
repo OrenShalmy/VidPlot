@@ -60,7 +60,7 @@
                       type: 'bar',
                       name: 'I-Frames',
                       marker: { color: '#0161ff' },
-                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: I"
                   },
                   {
                       x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
@@ -68,7 +68,7 @@
                       type: 'bar',
                       name: 'P-Frames',
                       marker: { color: '#70a6ff' },
-                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: P"
                   },
                   {
                       x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
@@ -76,7 +76,7 @@
                       type: 'bar',
                       name: 'B-Frames',
                       marker: { color: '#ffffff' },
-                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: B"
                   }
               ];
           } else {

@@ -48,31 +48,19 @@ document.addEventListener("DOMContentLoaded", function () {
     function handleFile(file) {
         const formData = new FormData();
         formData.append("video", file);
-        
-        // Show progress bar
-        progressContainer.style.display = 'block';
-        progressBar.style.width = '0%';
-    
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/upload', true);
 
-        xhr.upload.onprogress = (event) => {
-            if (event.lengthComputable) {
-                const percentCompleted = Math.round((event.loaded * 100) / event.total);
-                progressBar.style.width = percentCompleted + '%';
-            }
-        };
-
-        xhr.onload = function() {
-            if (xhr.status === 200) {
-                const result = JSON.parse(xhr.responseText);
-                if (result.error) {
-                    alert("Upload error: " + result.error);
-                } else {
-                    // Hide progress bar
-                    progressContainer.style.display = 'none';
-                    
-                    dropArea.style.display = "none";
+        fetch("/upload", {
+            method: "POST",
+            body: formData,
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.error) {
+                alert("Upload error: " + result.error);
+            } else {
+                // Hide dropArea and show video container
+                dropArea.style.display = "none";
+                document.getElementById("videoContainer").style.display = "flex";
                 videoPlayer.style.display = "block";
                 overlayText.style.display = "block";
 
@@ -84,7 +72,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         th.style.display = "table-cell";
                     });
                 });
-    
+
                 fetch(result.json_url)
                     .then(response => response.json())
                     .then(jsonData => {
@@ -93,16 +81,9 @@ document.addEventListener("DOMContentLoaded", function () {
                         setupPlotlyChart(jsonData);
                     })
                     .catch(err => console.error("Error fetching JSON:", err));
-                }
             }
-        };
+        })
+        .catch(err => console.error("Upload error:", err));
+    }
 
-        xhr.onerror = function() {
-            console.error("Upload error:", xhr.statusText);
-            // Hide progress bar on error
-            progressContainer.style.display = 'none';
-        };
-
-        xhr.send(formData);
-    }    
 });

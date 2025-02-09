@@ -63,70 +63,23 @@ div.toggles label {
   background-color: #333;
 }
 
-#dropArea {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  height: 50%;
-  width: 50%;
-  transform: translate(-50%, -50%);  
-  align-items: center;
-  border: 10px dashed #777;
-  border-radius: 20px;
-  cursor: pointer;
-  color: #aaa;
-  background-color: #222;
-  transition: 0.3s;
-  justify-content: center;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-#dropArea p {
-  font-size: 70px;
-  text-align: center;
-  padding: auto;
-}
-
-#dropArea.highlight {
-  border-color: #4CAF50;
-  background-color: #333;
-}
-
-#uploadProgress {
-    width: 80%;
-    height: 20px;
-    background-color: #333;
-    border-radius: 10px;
-    overflow: hidden;
-    margin: 10px auto;
-    display: none;
-}
-
-#uploadProgress .progress-bar {
-    width: 0%;
-    height: 100%;
-    background-color: #4CAF50;
-    transition: width 0.3s ease-in-out;
-}
-
-
 #videoContainer {
   position: relative;
   display: flex;
   width: 90%;
-  margin: 0 auto;
+  margin: 20px auto;
   gap: 20px;
   align-items: stretch;
+  min-height: 400px; /* Ensure container has height even when empty */
+  display: none; /* Hide initially */
 }
 
 #videoPlayer {
   flex: 7;
   max-width: 720px;
-  display: none; /* Hide the video player completely until a file is uploaded */
   height: auto;
   min-height: 400px;
+  display: block; /* Always show the video container */
 }
 
 #overlayText {
@@ -139,8 +92,62 @@ div.toggles label {
   font-size: 20px;
   text-align: left;
   overflow-y: auto;
-  display: none; /* Hide initially, just like videoPlayer */
+  display: none;
 }
+
+#dropArea {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60%;
+  max-width: 800px;
+  height: 60vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 4px dashed #777;
+  border-radius: 20px;
+  background-color: rgba(34, 34, 34, 0.95);
+  color: #aaa;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+#dropArea p {
+  font-size: 24px;
+  text-align: center;
+  margin: 0;
+  padding: 20px;
+}
+
+#dropArea.highlight {
+  border-color: #4CAF50;
+  background-color: rgba(51, 51, 51, 0.95);
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+#uploadProgress {
+  width: 80%;
+  height: 6px;
+  background-color: #333;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 20px auto;
+  display: none;
+}
+
+#uploadProgress .progress-bar {
+  width: 0%;
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.3s ease-in-out;
+}
+
 
 @media (max-width: 768px) {
   #videoContainer {
