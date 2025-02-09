@@ -162,7 +162,13 @@
       Plotly.newPlot('frameChart', traces, layout, {
         displaylogo: false,
         responsive: true,
-        useResizeHandler: true
+        useResizeHandler: true,
+        modeBarButtonsToRemove: [
+          'select2d',
+          'lasso2d', 
+          'autoScale2d',
+          'toggleSpikelines'
+        ]
       }).then(() => {
           const chartDiv = document.getElementById('frameChart');
           chartDiv.on('plotly_click', function(data) {
