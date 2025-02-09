@@ -50,42 +50,51 @@
       const bitRate = jsonData.streams[0].bit_rate;
       const mbps = bitRate / (1024 * 1024);
 
-      // Helper function to create traces
+      // Helper function to create traces based on view type
       function createTraces(type) {
-          const iTrace = {
-              x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-              y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-              mode: type === 'line' ? 'lines' : 'none',
-              type: type === 'line' ? 'scatter' : 'bar',
-              name: 'I-Frames',
-              marker: { color: '#0161ff', size: 4 },
-              line: { color: '#0161ff', width: 2 },
-              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
-          };
-
-          const pTrace = {
-              x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-              y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-              mode: type === 'line' ? 'lines' : 'none',
-              type: type === 'line' ? 'scatter' : 'bar',
-              name: 'P-Frames',
-              marker: { color: '#70a6ff', size: 4 },
-              line: { color: '#70a6ff', width: 2 },
-              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
-          };
-
-          const bTrace = {
-              x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-              y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-              mode: type === 'line' ? 'lines' : 'none',
-              type: type === 'line' ? 'scatter' : 'bar',
-              name: 'B-Frames',
-              marker: { color: '#ffffff', size: 4 },
-              line: { color: '#ffffff', width: 2 },
-              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
-          };
-
-          return [iTrace, pTrace, bTrace];
+          if (type === 'bar') {
+              return [
+                  {
+                      x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                      y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                      type: 'bar',
+                      name: 'I-Frames',
+                      marker: { color: '#0161ff' },
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
+                  },
+                  {
+                      x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                      y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                      type: 'bar',
+                      name: 'P-Frames',
+                      marker: { color: '#70a6ff' },
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
+                  },
+                  {
+                      x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                      y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                      type: 'bar',
+                      name: 'B-Frames',
+                      marker: { color: '#ffffff' },
+                      hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
+                  }
+              ];
+          } else {
+              // For line view, combine all frames and sort by timestamp
+              const allFrames = [...jsonData.frames].sort((a, b) => 
+                  parseFloat(a.best_effort_timestamp_time) - parseFloat(b.best_effort_timestamp_time)
+              );
+              
+              return [{
+                  x: allFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                  y: allFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                  type: 'scatter',
+                  mode: 'lines',
+                  name: 'Overall Bitrate',
+                  line: { color: '#4CAF50', width: 2 },
+                  hovertemplate: "Timestamp: %{x:.4f} s<br>Bitrate: %{y:.2f} Mb/s"
+              }];
+          }
       }
 
       // Initial traces

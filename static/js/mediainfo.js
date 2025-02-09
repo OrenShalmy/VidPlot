@@ -13,7 +13,7 @@ function updateOverlayText(jsonData) {
   const pixFormat = jsonData.streams[0].pix_fmt;
     overlayText.innerHTML = `
     <p>Format: ${formatName}</p>
-    <p>Duration: ${duration}</p>
+    <p>Duration: ${duration} seconds</p>
     <p>Bit Rate: ${kbps} kb/s</p>
     <p>Resolution: ${width}x${height}</p>
     <p>Frame Rate: ${fps} fps</p>
