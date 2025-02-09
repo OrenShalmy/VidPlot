@@ -48,42 +48,90 @@ document.addEventListener("DOMContentLoaded", function () {
     function handleFile(file) {
         const formData = new FormData();
         formData.append("video", file);
+        
+        // Show progress bar
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '0%';
 
-        fetch("/upload", {
-            method: "POST",
-            body: formData,
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.error) {
-                alert("Upload error: " + result.error);
-            } else {
-                // Hide dropArea and show video container
-                dropArea.style.display = "none";
-                document.getElementById("videoContainer").style.display = "flex";
-                videoPlayer.style.display = "block";
-                overlayText.style.display = "block";
+        // Add progress label
+        const progressLabel = document.createElement('div');
+        progressLabel.id = 'progressLabel';
+        progressLabel.textContent = 'Uploading...';
+        progressContainer.appendChild(progressLabel);
 
-                videoSource.src = result.video_url;
-                videoPlayer.load();
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/upload', true);
 
-                videoPlayer.addEventListener("loadedmetadata", function() {
-                    document.querySelectorAll("th").forEach(function(th) {
-                        th.style.display = "table-cell";
-                    });
-                });
-
-                fetch(result.json_url)
-                    .then(response => response.json())
-                    .then(jsonData => {
-                        console.log("FFprobe JSON data:", jsonData);
-                        updateOverlayText(jsonData);
-                        setupPlotlyChart(jsonData);
-                    })
-                    .catch(err => console.error("Error fetching JSON:", err));
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                // Upload is 50% of total progress
+                const percentCompleted = Math.round((event.loaded * 50) / event.total);
+                progressBar.style.width = percentCompleted + '%';
+                progressLabel.textContent = `Uploading: ${percentCompleted}%`;
             }
-        })
-        .catch(err => console.error("Upload error:", err));
+        };
+
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                const result = JSON.parse(xhr.responseText);
+                if (result.error) {
+                    alert("Upload error: " + result.error);
+                    progressContainer.style.display = 'none';
+                } else {
+                    progressBar.style.width = '75%';
+                    progressLabel.textContent = 'Processing video...';
+                    
+                    // Start polling for JSON file
+                    const pollInterval = setInterval(() => {
+                        fetch(result.json_url)
+                            .then(response => response.json())
+                            .then(jsonData => {
+                                if (jsonData.frames && jsonData.frames.length > 0) {
+                                    const lastFrame = jsonData.frames[jsonData.frames.length - 1];
+                                    const progress = Math.min(
+                                        75 + (parseFloat(lastFrame.best_effort_timestamp_time) / result.duration) * 25,
+                                        100
+                                    );
+                                    progressBar.style.width = progress + '%';
+                                    progressLabel.textContent = `Analyzing: ${Math.round(progress)}%`;
+
+                                    if (progress >= 99) {
+                                        clearInterval(pollInterval);
+                                        progressLabel.textContent = 'Complete!';
+                                        setTimeout(() => {
+                                            progressContainer.style.display = 'none';
+                                            // Update UI
+                                            dropArea.style.display = "none";
+                                            document.getElementById("videoContainer").style.display = "flex";
+                                            videoPlayer.style.display = "block";
+                                            overlayText.style.display = "block";
+                                            videoSource.src = result.video_url;
+                                            videoPlayer.load();
+
+                                            videoPlayer.addEventListener("loadedmetadata", function() {
+                                                document.querySelectorAll("th").forEach(function(th) {
+                                                    th.style.display = "table-cell";
+                                                });
+                                            });
+
+                                            updateOverlayText(jsonData);
+                                            setupPlotlyChart(jsonData);
+                                        }, 1000);
+                                    }
+                                }
+                            })
+                            .catch(() => {}); // Ignore errors during polling
+                    }, 500);
+                }
+            }
+        };
+
+        xhr.onerror = function() {
+            console.error("Upload error:", xhr.statusText);
+            progressContainer.style.display = 'none';
+        };
+
+        xhr.send(formData);
     }
 
 });

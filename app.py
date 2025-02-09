@@ -1,5 +1,6 @@
 import os
 import subprocess
+import json
 from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for
 from werkzeug.utils import secure_filename
 
@@ -42,26 +43,39 @@ def upload_video():
         json_filename = f"{os.path.splitext(filename)[0]}_data.json"
         output_json_path = os.path.join(app.config['OUTPUT_FOLDER'], json_filename)
         
+        video_url = url_for('static', filename=f'media/uploads/{filename}')
+        json_url = url_for('static', filename=f'media/logs/{json_filename}')
+        
+        # Run ffprobe analysis
         ffprobe_cmd = (
             f'ffprobe -hide_banner -loglevel error -v quiet '
             f'-select_streams v -print_format json '
-            f'-show_entries "format=format_name" '
+            f'-show_entries "format=format_name,duration" '
             f'-show_entries "stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height" '
             f'-show_entries "frame=pict_type,best_effort_timestamp_time,pkt_size,stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height" '
             f'"{public_filepath}" > "{output_json_path}"'
-            )
-        print(f"Running command: {ffprobe_cmd}")
-
+        )
         
         try:
             subprocess.run(ffprobe_cmd, shell=True, check=True)
+            
+            # Read the JSON file to get duration
+            with open(output_json_path, 'r') as f:
+                json_data = json.load(f)
+                duration = float(json_data.get('format', {}).get('duration', 0))
+
+            response = {
+                "message": "Processing video",
+                "json_url": json_url,
+                "video_url": video_url,
+                "duration": duration,
+                "status": "complete"
+            }
+            return jsonify(response)
+
         except subprocess.CalledProcessError as e:
             os.remove(public_filepath)
             return jsonify({"error": "Error processing video", "details": str(e)}), 500
-
-        video_url = url_for('static', filename=f'media/uploads/{filename}')
-        json_url = url_for('static', filename=f'media/logs/{json_filename}')
-        return jsonify({"message": "File processed successfully", "json_url": json_url, "video_url": video_url})
     else:
         return jsonify({"error": "Invalid file type"}), 400
 

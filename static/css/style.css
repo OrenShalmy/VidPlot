@@ -131,6 +131,13 @@ div.toggles label {
   transform: translate(-50%, -50%) scale(1.02);
 }
 
+#progressLabel {
+  text-align: center;
+  color: #e0e0e0;
+  font-size: 14px;
+  margin-top: 5px;
+}
+
 #uploadProgress {
   width: 80%;
   height: 6px;
@@ -147,6 +154,7 @@ div.toggles label {
   background-color: #4CAF50;
   transition: width 0.3s ease-in-out;
 }
+
 
 
 @media (max-width: 768px) {
