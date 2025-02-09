@@ -1,6 +1,3 @@
 .DS_Store
 *.mp4
-static/media/logs/*.json
-static/media/logs/bbb_sunflower_1080p_30fps_short_data.json
-static/media/logs/bbb_sunflower_1080p_30fps_short_data.json
 /static/media/logs

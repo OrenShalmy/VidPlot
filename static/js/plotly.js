@@ -1,5 +1,16 @@
 // Function to create the Plotly chart and table from the JSON data.
     function setupPlotlyChart(jsonData) {
+        // Add view state
+        let currentView = 'bar'; // or 'line'
+
+        // Add view switcher HTML
+        const togglesDiv = document.querySelector('div.toggles');
+        togglesDiv.innerHTML += `
+            <button id="barView" class="view-switcher active">Bar View</button>
+            <button id="lineView" class="view-switcher">Line View</button>
+        `;
+        togglesDiv.style.visibility = 'visible';
+
         // Helper function to convert bytes to megabits per second
         function bytesToMbps(bytes, duration) {
             return (bytes * 8) / (1024 * 1024 * duration); // Convert bytes to megabits per second
@@ -39,45 +50,52 @@
       const bitRate = jsonData.streams[0].bit_rate;
       const mbps = bitRate / (1024 * 1024);
 
-      // Create traces for each frame type
-      const iTrace = {
-        x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-        mode: 'lines',
-        type: 'bar',
-        name: 'I-Frames',
-        marker: { color: '#0161ff', size: 4 },
-        line: { color: '#0161ff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
-      };
+      // Helper function to create traces
+      function createTraces(type) {
+          const iTrace = {
+              x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+              y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+              mode: type === 'line' ? 'lines' : 'none',
+              type: type === 'line' ? 'scatter' : 'bar',
+              name: 'I-Frames',
+              marker: { color: '#0161ff', size: 4 },
+              line: { color: '#0161ff', width: 2 },
+              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: I"
+          };
 
-      const pTrace = {
-        x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-        mode: 'lines',
-        type: 'bar',
-        name: 'P-Frames',
-        marker: { color: '#70a6ff', size: 4 },
-        line: { color: '#70a6ff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
-      };
+          const pTrace = {
+              x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+              y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+              mode: type === 'line' ? 'lines' : 'none',
+              type: type === 'line' ? 'scatter' : 'bar',
+              name: 'P-Frames',
+              marker: { color: '#70a6ff', size: 4 },
+              line: { color: '#70a6ff', width: 2 },
+              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: P"
+          };
 
-      const bTrace = {
-        x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-        y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-        mode: 'lines',
-        type: 'bar',
-        name: 'B-Frames',
-        marker: { color: '#ffffff', size: 4 },
-        line: { color: '#ffffff', width: 1 },
-        hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
-      };
+          const bTrace = {
+              x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
+              y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+              mode: type === 'line' ? 'lines' : 'none',
+              type: type === 'line' ? 'scatter' : 'bar',
+              name: 'B-Frames',
+              marker: { color: '#ffffff', size: 4 },
+              line: { color: '#ffffff', width: 2 },
+              hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb/s<br>Type: B"
+          };
+
+          return [iTrace, pTrace, bTrace];
+      }
+
+      // Initial traces
+      let traces = createTraces('bar');
 
       // Plot general layout
       const layout = {
         title: '',
         xaxis: { title: 'Timestamp (seconds)' },
-        yaxis: { title: 'Frame Size (Mb/s)', gridcolor: '#444' },
+        yaxis: { title: 'Frame Size (Mb)', gridcolor: '#444' },
         plot_bgcolor: '#282828',
         paper_bgcolor: '#1e1e1e',
         font: { color: '#e0e0e0' },
@@ -132,12 +150,11 @@
     };
 
       // Create the Plotly chart
-      Plotly.newPlot('frameChart', [iTrace, pTrace, bTrace], layout, {
+      Plotly.newPlot('frameChart', traces, layout, {
         displaylogo: false,
         responsive: true,
         useResizeHandler: true
-      })
-        .then(() => {
+      }).then(() => {
           const chartDiv = document.getElementById('frameChart');
           chartDiv.on('plotly_click', function(data) {
             if (data.points && data.points.length > 0) {
@@ -145,7 +162,27 @@
               videoPlayer.currentTime = clickedTime;
             }
           });
-        });
+      });
+
+      // Add view switcher event listeners
+      document.getElementById('barView').addEventListener('click', function() {
+          if (currentView !== 'bar') {
+              currentView = 'bar';
+              Plotly.react('frameChart', createTraces('bar'), layout);
+              document.getElementById('barView').classList.add('active');
+              document.getElementById('lineView').classList.remove('active');
+          }
+      });
+
+      document.getElementById('lineView').addEventListener('click', function() {
+          if (currentView !== 'line') {
+              currentView = 'line';
+              Plotly.react('frameChart', createTraces('line'), layout);
+              document.getElementById('lineView').classList.add('active');
+              document.getElementById('barView').classList.remove('active');
+          }
+      });
+
 
       // Populate the table
       const tableBody = document.querySelector('table tbody');
@@ -157,7 +194,7 @@
         const pictTypeCell = row.insertCell();
 
         timestampCell.textContent = parseFloat(frame.best_effort_timestamp_time).toFixed(4);
-        pktSizeCell.textContent = bytesToMbps(parseInt(frame.pkt_size), frameDuration).toFixed(2) + ' Mb/s';
+        pktSizeCell.textContent = bytesToMbps(parseInt(frame.pkt_size), frameDuration).toFixed(2) + ' Mb';
         pictTypeCell.textContent = frame.pict_type;
       });
 
