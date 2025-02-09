@@ -55,7 +55,7 @@ div.toggles label {
 }
 
 .view-switcher.active {
-  background-color: #4CAF50;
+  background-color: #70a6ff;
 }
 
 /* CSS for highlighted table row */
@@ -126,7 +126,7 @@ div.toggles label {
 }
 
 #dropArea.highlight {
-  border-color: #4CAF50;
+  border-color: #70a6ff;
   background-color: rgba(51, 51, 51, 0.95);
   transform: translate(-50%, -50%) scale(1.02);
 }
@@ -151,7 +151,7 @@ div.toggles label {
 #uploadProgress .progress-bar {
   width: 0%;
   height: 100%;
-  background-color: #4CAF50;
+  background-color: #70a6ff;
   transition: width 0.3s ease-in-out;
 }
 

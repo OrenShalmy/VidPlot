@@ -91,7 +91,7 @@
                   type: 'scatter',
                   mode: 'lines',
                   name: 'Overall Bitrate',
-                  line: { color: '#4CAF50', width: 2 },
+                  line: { color: '#70a6ff', width: 2 },
                   hovertemplate: "Timestamp: %{x:.4f} s<br>Bitrate: %{y:.2f} Mb/s"
               }];
           }
