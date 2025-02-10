@@ -30,18 +30,18 @@ th {
   display: none;
 }
 
-div.toggles { /* Style the toggle container */
+div.toggles {
   visibility: hidden;
   width: 80%;
   margin: 10px auto;
-  text-align: center; /* Center the toggles */
+  text-align: center;
   display: flex;
   justify-content: center;
   gap: 20px;
 }
 
 div.toggles label {
-  margin: 0 10px; /* Add some spacing between toggles */
+  margin: 0 10px;
 }
 
 .view-switcher {
@@ -58,7 +58,6 @@ div.toggles label {
   background-color: #70a6ff;
 }
 
-/* CSS for highlighted table row */
 .highlighted {
   background-color: #333;
 }
@@ -70,8 +69,8 @@ div.toggles label {
   margin: 20px auto;
   gap: 20px;
   align-items: stretch;
-  min-height: 400px; /* Ensure container has height even when empty */
-  display: none; /* Hide initially */
+  min-height: 400px;
+  display: none;
 }
 
 #videoPlayer {
@@ -79,7 +78,7 @@ div.toggles label {
   max-width: 720px;
   height: auto;
   min-height: 400px;
-  display: block; /* Always show the video container */
+  display: block;
 }
 
 #overlayText {

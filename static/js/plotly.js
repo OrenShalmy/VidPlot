@@ -1,9 +1,6 @@
-// Function to create the Plotly chart and table from the JSON data.
     function setupPlotlyChart(jsonData) {
-        // Add view state
         let currentView = 'bar'; // or 'line'
 
-        // Add view switcher HTML
         const togglesDiv = document.querySelector('div.toggles');
         togglesDiv.innerHTML += `
             <button id="barView" class="view-switcher active">Bar View</button>
@@ -11,19 +8,16 @@
         `;
         togglesDiv.style.visibility = 'visible';
 
-        // Helper function to convert bytes to megabits per second
         function bytesToMbps(bytes, duration) {
-            return (bytes * 8) / (1024 * 1024 * duration); // Convert bytes to megabits per second
+            return (bytes * 8) / (1024 * 1024 * duration);
         }
 
-        // Calculate frame duration (assuming constant frame rate)
-        const frameRate = eval(jsonData.streams[0].r_frame_rate); // converts "30/1" to 30
+        const frameRate = eval(jsonData.streams[0].r_frame_rate);
         const frameDuration = 1 / frameRate;
 
-        // Add keyboard controls for frame navigation
         document.addEventListener('keydown', (event) => {
             if (!videoPlayer.paused) {
-                videoPlayer.pause(); // Pause video if playing
+                videoPlayer.pause();
             }
             
             switch(event.key) {
@@ -41,16 +35,13 @@
             }
         });
 
-        // Separate data by frame type
       const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
       const pFrames = jsonData.frames.filter(frame => frame.pict_type === 'P');
       const bFrames = jsonData.frames.filter(frame => frame.pict_type === 'B');
 
-      // Get media info
       const bitRate = jsonData.streams[0].bit_rate;
       const mbps = bitRate / (1024 * 1024);
 
-      // Helper function to create traces based on view type
       function createTraces(type) {
           if (type === 'bar') {
               return [
@@ -80,7 +71,6 @@
                   }
               ];
           } else {
-              // For line view, combine all frames and sort by timestamp
               const allFrames = [...jsonData.frames].sort((a, b) => 
                   parseFloat(a.best_effort_timestamp_time) - parseFloat(b.best_effort_timestamp_time)
               );
@@ -97,10 +87,8 @@
           }
       }
 
-      // Initial traces
       let traces = createTraces('bar');
 
-      // Plot general layout
       const layout = {
         title: '',
         xaxis: { title: 'Timestamp (seconds)' },
@@ -127,7 +115,7 @@
         shapes: [
         {
         type: 'line',
-        xref: 'paper',  // span the entire width of the plot area
+        xref: 'paper',
         x0: 0,
         x1: 1,
         yref: 'y',
@@ -158,7 +146,6 @@
 
     };
 
-      // Create the Plotly chart
       Plotly.newPlot('frameChart', traces, layout, {
         displaylogo: false,
         responsive: true,
@@ -179,7 +166,6 @@
           });
       });
 
-      // Add view switcher event listeners
       document.getElementById('barView').addEventListener('click', function() {
           if (currentView !== 'bar') {
               currentView = 'bar';
@@ -199,9 +185,8 @@
       });
 
 
-      // Populate the table
       const tableBody = document.querySelector('table tbody');
-      tableBody.innerHTML = '';  // Clear any existing rows
+      tableBody.innerHTML = '';
       jsonData.frames.forEach(frame => {
         const row = tableBody.insertRow();
         const timestampCell = row.insertCell();
@@ -213,7 +198,6 @@
         pictTypeCell.textContent = frame.pict_type;
       });
 
-      // Toggle functionality for traces
       const iFrameToggle = document.getElementById('iFrameToggle');
       const pFrameToggle = document.getElementById('pFrameToggle');
       const bFrameToggle = document.getElementById('bFrameToggle');
@@ -228,7 +212,6 @@
         }, [0, 1, 2]);
       }
 
-      // Update chart and table highlighting on video time update
       videoPlayer.addEventListener('timeupdate', function() {
         const currentTime = videoPlayer.currentTime;
         const closestFrame = findClosestFrame(currentTime, jsonData.frames);
@@ -246,7 +229,6 @@
         }
       });
 
-      // Find the closest frame given a time value
       function findClosestFrame(time, frames) {
         let closestFrame = null;
         let minDiff = Infinity;
@@ -261,7 +243,6 @@
         return closestFrame;
       }
 
-      // Highlight the corresponding table row for the given frame
       function highlightTableRow(frame) {
         const tableBody = document.querySelector('table tbody');
         const highlightedRows = tableBody.querySelectorAll('.highlighted');
@@ -275,14 +256,4 @@
           }
         }
       }
-
-      videoPlayer.addEventListener('play', () => {
-        function updateLoop(now, metadata) {
-          if (!videoPlayer.paused && !videoPlayer.ended) {
-            // You can update UI elements here if needed using metadata.mediaTime
-            videoPlayer.requestVideoFrameCallback(updateLoop);
-          }
-        }
-        videoPlayer.requestVideoFrameCallback(updateLoop);
-      });
     }

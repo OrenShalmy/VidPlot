@@ -59,7 +59,6 @@ def upload_video():
         try:
             subprocess.run(ffprobe_cmd, shell=True, check=True)
             
-            # Read the JSON file to get duration
             with open(output_json_path, 'r') as f:
                 json_data = json.load(f)
                 duration = float(json_data.get('format', {}).get('duration', 0))
