@@ -40,7 +40,7 @@
       const bFrames = jsonData.frames.filter(frame => frame.pict_type === 'B');
 
       const bitRate = jsonData.streams[0].bit_rate;
-      const mbps = bitRate / (1024 * 1024);
+      const mbps = bitRate / (1024 * 1000);
 
       function createTraces(type) {
           if (type === 'bar') {
@@ -99,55 +99,59 @@
         zoommode: 'x',
         dragmode: 'pan',
         legend: {
-          x: 0.05,
-          y: 0.95,
-          font: { color: '#e0e0e0' }
+            x: 0.05,
+            y: 0.95,
+            font: { color: '#e0e0e0' }
         },
         height: 400,
         autosize: true,
         margin: {
-          l: 50,
-          r: 50,
-          t: 10,
-          b: 40
+            l: 50,
+            r: 50,
+            t: 10,
+            b: 40
         },
-
         shapes: [
-        {
-        type: 'line',
-        xref: 'paper',
-        x0: 0,
-        x1: 1,
-        yref: 'y',
-        y0: mbps,
-        y1: mbps,
-        line: {
-            color: '#f200ff',
-            width: 2,
-            dash: 'dash'
-        },
-        }
-    ],
-    // annotations: [
-    //     {
-    //     xref: 'paper',
-    //     x: 0,  // position it just to the right of the plot area
-    //     y: kbps,
-    //     yref: 'y',
-    //     text: `Average Bitrate: ${kbps} kb/s`,
-    //     showarrow: false,
-    //     yshift: 10,
-    //     font: {
-    //         color: 'red'
-    //     },
-    //     align: 'right'
-    //     }
-    // ]
-
+            {
+                type: 'line',
+                xref: 'paper',
+                x0: 0,
+                x1: 1,
+                yref: 'y',
+                y0: mbps,
+                y1: mbps,
+                line: {
+                    color: '#f200ff',
+                    width: 2,
+                    dash: 'dash'
+                },
+            }
+        ],
+        annotations: [
+            {
+                xref: 'paper',
+                yref: 'y',
+                x: 0,  // Position annotation near the right side
+                y: mbps,   // Align with the average bitrate line
+                text: `Average Bitrate: ${mbps.toFixed(2)} Mb/s`,
+                showarrow: false,
+                font: {
+                    size: 12,
+                    color: '#f200ff'
+                },
+                bgcolor: '#282828',
+                bordercolor: '#f200ff',
+                borderwidth: 1,
+                borderpad: 4,
+                opacity: 0.8,
+            }
+        ]
     };
+    
 
       Plotly.newPlot('frameChart', traces, layout, {
         displaylogo: false,
+        annotations: true,
         responsive: true,
         useResizeHandler: true,
         modeBarButtonsToRemove: [
@@ -155,7 +159,7 @@
           'lasso2d', 
           'autoScale2d',
           'toggleSpikelines'
-        ]
+        ],
       }).then(() => {
           const chartDiv = document.getElementById('frameChart');
           chartDiv.on('plotly_click', function(data) {
