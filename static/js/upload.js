@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoUpload = document.getElementById("videoUpload");
     const videoPlayer = document.getElementById("videoPlayer");
     const videoSource = document.getElementById("videoSource");
-    const overlayText = document.getElementById("overlayText");
+    const mediaInfo = document.getElementById("mediaInfo");
 
     // Add progress bar HTML to dropArea
     dropArea.innerHTML += `
@@ -104,7 +104,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                             dropArea.style.display = "none";
                                             document.getElementById("videoContainer").style.display = "flex";
                                             videoPlayer.style.display = "block";
-                                            overlayText.style.display = "block";
+                                            mediaInfo.style.display = "block";
                                             videoSource.src = result.video_url;
                                             videoPlayer.load();
 
@@ -114,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
                                                 });
                                             });
 
-                                            updateOverlayText(jsonData);
+                                            updatemediaInfo(jsonData);
                                             setupPlotlyChart(jsonData);
                                         }, 1000);
                                     }

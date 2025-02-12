@@ -6,7 +6,7 @@ body {
 }
 
 #frameChart {
-  width: 90% !important; /* Match videoContainer width */
+  width: 100% !important; /* Match videoContainer width */
   margin: 20px auto;
   max-height: 500px;
   cursor: pointer;
@@ -62,7 +62,7 @@ div.toggles label {
   display: block;
 }
 
-#overlayText {
+#mediaInfo {
   flex: 3;
   position: relative;
   min-height: 400px;
@@ -119,9 +119,9 @@ div.toggles label {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 60%;
+  width: 50vh;
   max-width: 800px;
-  height: 60vh;
+  height: 50vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -182,12 +182,12 @@ div.toggles label {
   }
   
   #videoPlayer,
-  #overlayText {
+  #mediaInfo {
     width: 100%;
     flex: none;
   }
   
-  #overlayText {
-    min-height: 200px;
+  #mediaInfo {
+    min-height: 0px;
   }
 }

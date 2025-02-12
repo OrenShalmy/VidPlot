@@ -1,5 +1,5 @@
-function updateOverlayText(jsonData) {
-  const overlayText = document.getElementById('overlayText');
+function updatemediaInfo(jsonData) {
+  const mediaInfo = document.getElementById('mediaInfo');
   const duration = jsonData.streams[0].duration;
   const bitRate = jsonData.streams[0].bit_rate;
   const fps = parseFloat(jsonData.streams[0].r_frame_rate).toFixed(2);
@@ -46,7 +46,7 @@ function updateOverlayText(jsonData) {
 
   const gopSize = detectGOP(jsonData.frames);
 
-  overlayText.innerHTML = `
+  mediaInfo.innerHTML = `
     <div class="info-section">
       <h3>Video Properties</h3>
       <div class="info-item">
