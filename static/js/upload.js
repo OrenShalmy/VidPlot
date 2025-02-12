@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", function () {
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable) {
                 // Upload is 50% of total progress
-                const percentCompleted = Math.round((event.loaded * 50) / event.total);
+                const percentCompleted = Math.round((event.loaded * 25) / event.total);
                 progressBar.style.width = percentCompleted + '%';
                 progressLabel.textContent = `Uploading: ${percentCompleted}%`;
             }

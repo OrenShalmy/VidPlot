@@ -13,9 +13,9 @@ function updateOverlayText(jsonData) {
     overlayText.innerHTML = `
     <p>Format: ${formatName}</p>
     <p>Codec: ${codecName}</p>
-    <p>Duration: ${duration} seconds</p>
+    <p>Duration: ${parseInt(duration).toFixed(2)} seconds</p>
     <p>Resolution: ${width}x${height}</p>
-    <p>Frame Rate: ${fps} fps</p>
+    <p>Frame Rate: ${parseInt(fps).toFixed(2)} fps</p>
     <p>Bit Rate: ${(parseInt(bitRate) / 1024).toFixed(2)} kb/s</p>
     <p>Profile: ${profile}</p>
     <p>Level: ${level}</p>
