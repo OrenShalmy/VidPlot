@@ -13,24 +13,8 @@ body {
 }
 
 
-table {
-  width: 80%;
-  margin: 20px auto;
-  border-collapse: collapse;
-}
-
-th, td {
-  border: 1px solid #444;
-  padding: 8px;
-  text-align: center;
-}
-
-th {
-  background-color: #333;
-  display: none;
-}
-
 div.toggles {
+
   visibility: hidden;
   width: 80%;
   margin: 10px auto;
@@ -58,11 +42,8 @@ div.toggles label {
   background-color: #70a6ff;
 }
 
-.highlighted {
-  background-color: #333;
-}
-
 #videoContainer {
+
   position: relative;
   display: flex;
   width: 90%;

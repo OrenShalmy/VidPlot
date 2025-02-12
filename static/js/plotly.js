@@ -188,20 +188,6 @@
           }
       });
 
-
-      const tableBody = document.querySelector('table tbody');
-      tableBody.innerHTML = '';
-      jsonData.frames.forEach(frame => {
-        const row = tableBody.insertRow();
-        const timestampCell = row.insertCell();
-        const pktSizeCell = row.insertCell();
-        const pictTypeCell = row.insertCell();
-
-        timestampCell.textContent = parseFloat(frame.best_effort_timestamp_time).toFixed(4);
-        pktSizeCell.textContent = bytesToMbps(parseInt(frame.pkt_size), frameDuration).toFixed(2) + ' Mb';
-        pictTypeCell.textContent = frame.pict_type;
-      });
-
       const iFrameToggle = document.getElementById('iFrameToggle');
       const pFrameToggle = document.getElementById('pFrameToggle');
       const bFrameToggle = document.getElementById('bFrameToggle');
