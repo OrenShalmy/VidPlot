@@ -85,13 +85,52 @@ div.toggles label {
   flex: 3;
   position: relative;
   min-height: 400px;
-  background-color: rgba(40, 40, 40, 0.591);
-  padding: 15px;
+  background-color: rgba(34, 34, 34, 0.95);
+  padding: 20px;
   color: rgb(255, 255, 255);
-  font-size: 20px;
+  font-size: 14px;
   text-align: left;
   overflow-y: auto;
   display: none;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.info-section {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.info-section h3 {
+  color: #70a6ff;
+  font-size: 18px;
+  margin: 0 0 16px 0;
+  font-weight: 500;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.info-item .label {
+  color: #aaa;
+  font-size: 14px;
+}
+
+.info-item .value {
+  color: #fff;
+  font-size: 14px;
+  font-family: monospace;
 }
 
 #dropArea {

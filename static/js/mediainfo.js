@@ -47,15 +47,48 @@ function updateOverlayText(jsonData) {
   const gopSize = detectGOP(jsonData.frames);
 
   overlayText.innerHTML = `
-  <p>Format: ${formatName}</p>
-  <p>Codec: ${codecName}</p>
-  <p>Duration: ${parseInt(duration).toFixed(2)} seconds</p>
-  <p>Resolution: ${width}x${height}</p>
-  <p>Frame Rate: ${parseInt(fps).toFixed(2)} fps</p>
-  <p>Bit Rate: ${(parseInt(bitRate) / 1024).toFixed(2)} kb/s</p>
-  <p>GOP Size: ${gopSize} frames</p>
-  <p>Profile: ${profile}</p>
-  <p>Level: ${level}</p>
-  <p>Pixel Format: ${pixFormat}</p>
+    <div class="info-section">
+      <h3>Video Properties</h3>
+      <div class="info-item">
+        <span class="label">Container:</span>
+        <span class="value">${formatName}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Codec:</span>
+        <span class="value">${codecName}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Profile:</span>
+        <span class="value">${profile}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Level:</span>
+        <span class="value">${level}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Resolution:</span>
+        <span class="value">${width}x${height}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Duration:</span>
+        <span class="value">${parseInt(duration).toFixed(2)}s</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Frame Rate:</span>
+        <span class="value">${parseInt(fps)} fps</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Bit Rate:</span>
+        <span class="value">${(parseInt(bitRate) / 1024).toFixed(2)} kb/s</span>
+      </div>
+      <div class="info-item">
+        <span class="label">GOP Size:</span>
+        <span class="value">${gopSize} frames</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Pixel Format:</span>
+        <span class="value">${pixFormat}</span>
+      </div>
+    </div>
   `;
 }
