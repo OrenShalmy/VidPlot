@@ -43,7 +43,6 @@ div.toggles label {
 }
 
 #videoContainer {
-
   position: relative;
   display: flex;
   width: 90%;
@@ -51,7 +50,6 @@ div.toggles label {
   gap: 20px;
   align-items: stretch;
   min-height: 400px;
-  display: none;
 }
 
 #videoPlayer {
@@ -59,17 +57,17 @@ div.toggles label {
   max-width: 720px;
   height: auto;
   min-height: 400px;
-  display: block;
+  display: none;
 }
 
 #mediaInfo {
   flex: 3;
   position: relative;
-  min-height: 400px;
+  min-height: 300px;
   background-color: rgba(34, 34, 34, 0.95);
   padding: 20px;
   color: rgb(255, 255, 255);
-  font-size: 14px;
+  font-size: 20px;
   text-align: left;
   overflow-y: auto;
   display: none;
@@ -90,7 +88,7 @@ div.toggles label {
 
 .info-section h3 {
   color: #70a6ff;
-  font-size: 18px;
+  font-size: 16px;
   margin: 0 0 16px 0;
   font-weight: 500;
 }
@@ -105,12 +103,12 @@ div.toggles label {
 
 .info-item .label {
   color: #aaa;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .info-item .value {
   color: #fff;
-  font-size: 14px;
+  font-size: 16px;
   font-family: monospace;
 }
 
