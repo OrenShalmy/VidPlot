@@ -1,0 +1,21 @@
+{
+	"name": "VidPlot",
+	"short_name": "VidPlot",
+	"description": "Video Frame Analysis Tool",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#1e1e1e",
+	"theme_color": "#1e1e1e",
+	"icons": [
+		{
+			"src": "/static/icons/icon-192x192.png",
+			"sizes": "192x192",
+			"type": "image/png"
+		},
+		{
+			"src": "/static/icons/icon-512x512.png",
+			"sizes": "512x512",
+			"type": "image/png"
+		}
+	]
+}

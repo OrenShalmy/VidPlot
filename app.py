@@ -19,6 +19,14 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.route('/static/js/sw.js')
+def service_worker():
+    response = send_from_directory('static/js', 'sw.js')
+    # Add Service-Worker-allowed header
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
