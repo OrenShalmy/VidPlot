@@ -51,7 +51,7 @@ def upload_video():
             f'ffprobe -hide_banner -loglevel error -v quiet '
             f'-select_streams v -print_format json '
             f'-show_entries "format=format_name,duration" '
-            f'-show_entries "stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height,field_order" '
+            f'-show_entries "stream=r_frame_rate,bit_rate,codec_name,pix_fmt,profile,level,duration,width,height,bits_per_raw_sample,field_order" '
             f'-show_entries "frame=pict_type,best_effort_timestamp_time,pkt_size" '
             f'"{public_filepath}" > "{output_json_path}"'
         )

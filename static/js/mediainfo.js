@@ -10,6 +10,7 @@ function updatemediaInfo(jsonData) {
   const profile = jsonData.streams[0].profile;
   const level = jsonData.streams[0].level;
   const pixFormat = jsonData.streams[0].pix_fmt;
+  const bitsPerPixel = jsonData.streams[0].bits_per_raw_sample;
   const fieldOrder = jsonData.streams[0].field_order || 'progressive';
 
   // Find GOP size by analyzing I-frame positions
@@ -89,6 +90,10 @@ function updatemediaInfo(jsonData) {
       <div class="info-item">
         <span class="label">Pixel Format:</span>
         <span class="value">${pixFormat}</span>
+      </div>
+      <div class="info-item">
+        <span class="label">Bits per Pixel:</span>
+        <span class="value">${bitsPerPixel}</span>
       </div>
       <div class="info-item">
         <span class="label">Scan Type:</span>
