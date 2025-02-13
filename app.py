@@ -43,8 +43,8 @@ def upload_video():
         json_filename = f"{os.path.splitext(filename)[0]}_data.json"
         output_json_path = os.path.join(app.config['OUTPUT_FOLDER'], json_filename)
         
-        video_url = url_for('static', filename=f'media/uploads/{filename}')
-        json_url = url_for('static', filename=f'media/logs/{json_filename}')
+        # Get file size
+        file_size = os.path.getsize(public_filepath)
         
         # Run ffprobe analysis
         ffprobe_cmd = (
@@ -59,12 +59,23 @@ def upload_video():
         try:
             subprocess.run(ffprobe_cmd, shell=True, check=True)
             
+            # Add file size to the JSON data
             with open(output_json_path, 'r') as f:
                 json_data = json.load(f)
-                duration = float(json_data.get('format', {}).get('duration', 0))
+            
+            if 'format' not in json_data:
+                json_data['format'] = {}
+            json_data['format']['file_size'] = file_size
+            
+            with open(output_json_path, 'w') as f:
+                json.dump(json_data, f)
+
+            duration = float(json_data.get('format', {}).get('duration', 0))
+            video_url = url_for('static', filename=f'media/uploads/{filename}')
+            json_url = url_for('static', filename=f'media/logs/{json_filename}')
 
             response = {
-                "message": "Processing video",
+                "message": "File processed successfully",
                 "json_url": json_url,
                 "video_url": video_url,
                 "duration": duration,

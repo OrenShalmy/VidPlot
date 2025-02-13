@@ -4,6 +4,7 @@ function updatemediaInfo(jsonData) {
   const bitRate = jsonData.streams[0].bit_rate;
   const fps = parseFloat(jsonData.streams[0].r_frame_rate).toFixed(2);
   const formatName = jsonData.format.format_name;
+  const fileSize = (jsonData.format.file_size / (1024 * 1024)).toFixed(2); // Convert to MB
   const codecName = jsonData.streams[0].codec_name;
   const width = jsonData.streams[0].width;
   const height = jsonData.streams[0].height;
@@ -48,14 +49,22 @@ function updatemediaInfo(jsonData) {
 
   const gopSize = detectGOP(jsonData.frames);
 
+  // Get filename from video source
+  const videoSource = document.getElementById('videoSource');
+  const filename = videoSource.src ? decodeURIComponent(videoSource.src.split('/').pop()) : 'Unknown File';
+
   mediaInfo.innerHTML = `
     <div class="info-section">
-      <h3>Video Properties</h3>
+      <h3>Video Properties for ${filename}</h3>
+      <div class="info-item">
+        <span class="label">File Size:</span>
+        <span class="value">${fileSize} MB</span>
+        </div>
       <div class="info-item">
         <span class="label">Container:</span>
         <span class="value">${formatName}</span>
-      </div>
-      <div class="info-item">
+        </div>
+        <div class="info-item">
         <span class="label">Codec:</span>
         <span class="value">${codecName}</span>
       </div>
