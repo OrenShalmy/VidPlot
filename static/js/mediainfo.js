@@ -9,7 +9,7 @@ function updatemediaInfo(jsonData) {
   const width = jsonData.streams[0].width;
   const height = jsonData.streams[0].height;
   const profile = jsonData.streams[0].profile;
-  const level = jsonData.streams[0].level;
+  const level = (jsonData.streams[0].level / 10).toFixed(1);
   const pixFormat = jsonData.streams[0].pix_fmt;
   const bitsPerPixel = jsonData.streams[0].bits_per_raw_sample;
   const fieldOrder = jsonData.streams[0].field_order || 'progressive';
@@ -68,14 +68,11 @@ function updatemediaInfo(jsonData) {
         <span class="label">Codec:</span>
         <span class="value">${codecName}</span>
       </div>
-      <div class="info-item">
+        <div class="info-item">
         <span class="label">Profile:</span>
-        <span class="value">${profile}</span>
-      </div>
-      <div class="info-item">
-        <span class="label">Level:</span>
-        <span class="value">${level}</span>
-      </div>
+        <span class="value">${profile}@L${level}</span>
+        </div>
+
       <div class="info-item">
         <span class="label">Resolution:</span>
         <span class="value">${width}x${height}</span>
