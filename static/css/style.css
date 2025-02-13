@@ -110,6 +110,7 @@ div.toggles label {
 .info-item .label {
   color: #aaa;
   font-size: 16px;
+  padding-left: 10px;
 }
 
 .info-item .value {
