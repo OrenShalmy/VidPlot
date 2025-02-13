@@ -29,7 +29,7 @@ Download from [FFmpeg website](https://ffmpeg.org/download.html) and add to syst
 
 ```bash
 # Clone the repository
-git clone [your-repo-url]
+git clone https://github.com/OrenShalmy/VidPlot2.git
 cd VidPlot2
 
 # Create and activate virtual environment (optional but recommended)
