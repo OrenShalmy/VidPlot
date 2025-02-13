@@ -1,3 +1,5 @@
+<img width="800" alt="image" src="https://github.com/user-attachments/assets/d8be2694-c833-4027-ada5-bb44eddbbee6" />
+
 # VidPlot2
 
 A web-based video frame analyzer that provides visual insights into video frame types and bitrates.
