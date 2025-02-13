@@ -215,7 +215,6 @@
               ]
             }
           });
-          highlightTableRow(closestFrame);
         }
       });
 
@@ -231,19 +230,5 @@
           }
         });
         return closestFrame;
-      }
-
-      function highlightTableRow(frame) {
-        const tableBody = document.querySelector('table tbody');
-        const highlightedRows = tableBody.querySelectorAll('.highlighted');
-        highlightedRows.forEach(row => row.classList.remove('highlighted'));
-        for (let i = 0; i < tableBody.rows.length; i++) {
-          const row = tableBody.rows[i];
-          const timestampCell = row.cells[0];
-          if (parseFloat(timestampCell.textContent) === parseFloat(frame.best_effort_timestamp_time)) {
-            row.classList.add('highlighted');
-            break;
-          }
-        }
       }
     }
