@@ -48,26 +48,28 @@ div.toggles label {
   width: 90%;
   margin: 20px auto;
   gap: 20px;
-  align-items: stretch;
+  align-items: flex-start;
   min-height: 400px;
 }
 
 #videoPlayer {
   flex: 7;
   max-width: 720px;
-  height: auto;
-  min-height: 400px;
+  height: 400px;
+  background-color: #222;
+  cursor: pointer;
+  transition: all 0.3s ease;
   display: none;
+  object-fit: contain;
 }
 
 #mediaInfo {
   flex: 3;
-  position: relative;
-  min-height: 300px;
+  height: 400px;
   background-color: rgba(34, 34, 34, 0.95);
-  padding: 20px;
+  padding: 15px;
   color: rgb(255, 255, 255);
-  font-size: 20px;
+  font-size: 14px;
   text-align: left;
   overflow-y: auto;
   display: none;
@@ -117,9 +119,9 @@ div.toggles label {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 50vh;
-  max-width: 800px;
+  width: 80vh;
   height: 50vh;
+  max-width: 800px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -177,15 +179,14 @@ div.toggles label {
 @media (max-width: 768px) {
   #videoContainer {
     flex-direction: column;
+    height: auto;
   }
   
   #videoPlayer,
   #mediaInfo {
     width: 100%;
     flex: none;
-  }
-  
-  #mediaInfo {
-    min-height: 0px;
+    height: 400px;
   }
 }
+
