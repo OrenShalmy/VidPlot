@@ -1,4 +1,6 @@
-<img width="800" alt="image" src="https://github.com/user-attachments/assets/d8be2694-c833-4027-ada5-bb44eddbbee6" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/d8be2694-c833-4027-ada5-bb44eddbbee6" />
+<img width="600" alt="image" src="https://github.com/user-attachments/assets/72944ef8-e5b5-4156-ab38-47326485965f" />
+
 
 # VidPlot2
 
