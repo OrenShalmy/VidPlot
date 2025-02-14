@@ -9,7 +9,7 @@ A web-based video frame analyzer that provides visual insights into video frame 
 ## Prerequisites
 
 1. Python 3.7 or higher
-2. FFmpeg with ffprobe (for video analysis)
+2. FFprobe
 
 ## Installation
 
@@ -48,6 +48,7 @@ pip install -r requirements.txt
 
 1. Start the server:
 ```bash
+cd VidPlot2
 python app.py
 ```
 
