@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 UPLOAD_FOLDER = os.path.join(app.root_path, 'uploads')
 OUTPUT_FOLDER = os.path.join(app.root_path, 'static', 'media', 'logs')
-ALLOWED_EXTENSIONS = {'mp4', 'mov'}
+ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
