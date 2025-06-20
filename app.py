@@ -42,6 +42,8 @@ def upload_video():
         return jsonify({"error": "No selected file"}), 400
 
     if file and allowed_file(file.filename):
+        if file.filename is None:
+            return jsonify({"error": "Invalid filename"}), 400
         filename = secure_filename(file.filename)
         public_upload_folder = os.path.join(app.root_path, 'static', 'media', 'uploads')
         os.makedirs(public_upload_folder, exist_ok=True)
