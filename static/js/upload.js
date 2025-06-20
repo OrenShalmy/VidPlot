@@ -4,6 +4,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoPlayer = document.getElementById("videoPlayer");
     const videoSource = document.getElementById("videoSource");
     const mediaInfo = document.getElementById("mediaInfo");
+    const videoSection = document.getElementById("videoSection");
+    const frameGraphSection = document.getElementById("frameGraphSection");
+
+    // Hide video and graph sections initially
+    if (videoSection) videoSection.style.display = "none";
+    if (frameGraphSection) frameGraphSection.style.display = "none";
 
     // Add progress bar HTML to dropArea
     dropArea.innerHTML += `
@@ -100,13 +106,14 @@ document.addEventListener("DOMContentLoaded", function () {
                                         progressLabel.textContent = 'Complete!';
                                         setTimeout(() => {
                                             progressContainer.style.display = 'none';
-                                            // Update UI
+                                            // Update UI for new layout
                                             dropArea.style.display = "none";
-                                            document.getElementById("videoContainer").style.display = "flex";
-                                            videoPlayer.style.display = "block";
-                                            mediaInfo.style.display = "block";
-                                            videoSource.src = result.video_url;
-                                            videoPlayer.load();
+                                            if (videoSection) videoSection.style.display = "block";
+                                            if (frameGraphSection) frameGraphSection.style.display = "block";
+                                            if (videoPlayer) videoPlayer.style.display = "block";
+                                            if (mediaInfo) mediaInfo.style.display = "block";
+                                            if (videoSource) videoSource.src = result.video_url;
+                                            if (videoPlayer) videoPlayer.load();
 
                                             videoPlayer.addEventListener("loadedmetadata", function() {
                                                 document.querySelectorAll("th").forEach(function(th) {

@@ -1,5 +1,6 @@
 function updatemediaInfo(jsonData) {
   const mediaInfo = document.getElementById('mediaInfo');
+  if (!mediaInfo) return;
   const duration = jsonData.streams[0].duration;
   const bitRate = jsonData.streams[0].bit_rate;
   const fps = parseFloat(jsonData.streams[0].r_frame_rate).toFixed(2);
@@ -107,4 +108,14 @@ function updatemediaInfo(jsonData) {
       </div>
     </div>
   `;
+
+  // Toggle logic for info panel
+  const toggleBtn = document.getElementById('toggleInfoBtn');
+  if (toggleBtn) {
+    toggleBtn.onclick = function() {
+      mediaInfo.classList.toggle('hide');
+    };
+  }
+  // Show info panel by default
+  mediaInfo.classList.remove('hide');
 }

@@ -16,15 +16,31 @@ function setupPlotlyChart(jsonData) {
         });
         return closestFrame;
     }
+    function findFrameIndexByTime(time, frames) {
+        let closestIdx = 0;
+        let minDiff = Infinity;
+        frames.forEach((frame, idx) => {
+            const timestamp = parseFloat(frame.best_effort_timestamp_time);
+            const diff = Math.abs(time - timestamp);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestIdx = idx;
+            }
+        });
+        return closestIdx;
+    }
     function updateCurrentFrameMarker(currentTime) {
+        // Snap to the closest frame timestamp
+        const closestFrame = findClosestFrame(currentTime, jsonData.frames);
+        const snappedTime = closestFrame ? parseFloat(closestFrame.best_effort_timestamp_time) : currentTime;
         // Remove previous marker if exists
         let updateShapes = layout.shapes.filter(s => s.name !== currentFrameShapeId);
         // Add new marker
         updateShapes.push({
             type: 'line',
             xref: 'x',
-            x0: currentTime,
-            x1: currentTime,
+            x0: snappedTime,
+            x1: snappedTime,
             yref: 'paper',
             y0: 0,
             y1: 1,
@@ -37,35 +53,32 @@ function setupPlotlyChart(jsonData) {
         });
         Plotly.relayout('frameChart', { shapes: updateShapes });
     }
-    function syncSlider(currentTime) {
-        if (slider) {
-            slider.value = currentTime;
-            sliderValue.textContent = currentTime.toFixed(2) + 's';
-        }
-    }
 
     // --- Variable Setup ---
     let currentView = 'bar';
     const currentFrameShapeId = 'current-frame-marker';
     const togglesDiv = document.querySelector('div.toggles');
-    const slider = document.getElementById('frameSlider');
-    const sliderValue = document.getElementById('sliderValue');
     const videoPlayer = document.getElementById('videoPlayer');
-    if (!togglesDiv || !slider || !sliderValue || !videoPlayer) {
+    if (!togglesDiv || !videoPlayer) {
         console.error('Required DOM elements not found.');
         return;
     }
     const duration = parseFloat(jsonData.format.duration);
-    const frameRate = eval(jsonData.streams[0].r_frame_rate);
-    const frameDuration = 1 / frameRate;
     const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
     const pFrames = jsonData.frames.filter(frame => frame.pict_type === 'P');
     const bFrames = jsonData.frames.filter(frame => frame.pict_type === 'B');
+    const allFrames = jsonData.frames.map(f => ({
+        ...f,
+        timestamp: parseFloat(f.best_effort_timestamp_time),
+        pktSize: parseInt(f.pkt_size)
+    }));
+    const frameTimestamps = allFrames.map(f => f.timestamp);
+    const frameDuration = allFrames.length > 1 ? (frameTimestamps[1] - frameTimestamps[0]) : 1 / 30;
     const bitRate = jsonData.streams[0].bit_rate;
     const mbps = bitRate / (1024 * 1000);
 
     // --- UI Setup ---
-    togglesDiv.innerHTML += `
+    togglesDiv.innerHTML = `
         <button id="barView" class="view-switcher active">Bar View</button>
         <button id="lineView" class="view-switcher">Line View</button>
         <button id="resetZoom" class="view-switcher">Reset Zoom</button>
@@ -75,39 +88,31 @@ function setupPlotlyChart(jsonData) {
     // --- Plotly Traces and Layout ---
     function createTraces(type) {
         if (type === 'bar') {
+            // Plot all frames as a single bar trace, color by frame type
+            const colors = jsonData.frames.map(f => {
+                if (f.pict_type === 'I') return '#0161ff';
+                if (f.pict_type === 'P') return '#70a6ff';
+                if (f.pict_type === 'B') return '#ffffff';
+                return '#888888';
+            });
             return [
                 {
-                    x: iFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-                    y: iFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                    x: jsonData.frames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                    y: jsonData.frames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
                     type: 'bar',
-                    name: 'I-Frames',
-                    marker: { color: '#0161ff' },
-                    hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: I"
-                },
-                {
-                    x: pFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-                    y: pFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-                    type: 'bar',
-                    name: 'P-Frames',
-                    marker: { color: '#70a6ff' },
-                    hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: P"
-                },
-                {
-                    x: bFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-                    y: bFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-                    type: 'bar',
-                    name: 'B-Frames',
-                    marker: { color: '#ffffff' },
-                    hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: B"
+                    name: 'Frames',
+                    marker: { color: colors },
+                    hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: %{customdata}",
+                    customdata: jsonData.frames.map(f => f.pict_type)
                 }
             ];
         } else {
-            const allFrames = [...jsonData.frames].sort((a, b) => 
+            const allSorted = [...jsonData.frames].sort((a, b) => 
                 parseFloat(a.best_effort_timestamp_time) - parseFloat(b.best_effort_timestamp_time)
             );
             return [{
-                x: allFrames.map(f => parseFloat(f.best_effort_timestamp_time)),
-                y: allFrames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                x: allSorted.map(f => parseFloat(f.best_effort_timestamp_time)),
+                y: allSorted.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
                 type: 'scatter',
                 mode: 'lines',
                 name: 'Overall Bitrate',
@@ -222,36 +227,64 @@ function setupPlotlyChart(jsonData) {
         });
     });
 
-    // --- Frame Type Visibility (if toggles are enabled) ---
-    const iFrameToggle = document.getElementById('iFrameToggle');
-    const pFrameToggle = document.getElementById('pFrameToggle');
-    const bFrameToggle = document.getElementById('bFrameToggle');
-    function updateVisibility() {
-        Plotly.restyle('frameChart', {
-            visible: [
-                iFrameToggle.checked,
-                pFrameToggle.checked,
-                bFrameToggle.checked
-            ]
-        }, [0, 1, 2]);
-    }
-    // --- Slider Setup ---
-    slider.min = 0;
-    slider.max = duration;
-    slider.step = 0.01;
-    slider.value = 0;
-    sliderValue.textContent = '0.00s';
-    slider.addEventListener('input', function() {
-        const sliderTime = parseFloat(slider.value);
-        videoPlayer.currentTime = sliderTime;
-        sliderValue.textContent = sliderTime.toFixed(2) + 's';
-        // Do NOT change the graph zoom here, just update the marker via timeupdate
-    });
-
-    // --- Video/Slider Sync and Marker Update ---
+    // --- Video/Marker Sync ---
     videoPlayer.addEventListener('timeupdate', function() {
         const currentTime = videoPlayer.currentTime;
-        syncSlider(currentTime);
         updateCurrentFrameMarker(currentTime);
+    });
+
+    // --- Keyboard Frame Navigation & Zoom ---
+    document.addEventListener('keydown', function(e) {
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        let skipToIdx = null;
+        const currentIdx = findFrameIndexByTime(videoPlayer.currentTime, jsonData.frames);
+        if (e.key === 'ArrowRight') {
+            if (currentIdx < jsonData.frames.length - 1) {
+                skipToIdx = currentIdx + 1;
+                e.preventDefault();
+            }
+        } else if (e.key === 'ArrowLeft') {
+            if (currentIdx > 0) {
+                skipToIdx = currentIdx - 1;
+                e.preventDefault();
+            }
+        } else if (e.key === '+' || e.key === '=' ) {
+            // Zoom in (halve the x-axis range)
+            const xaxis = layout.xaxis;
+            let [xmin, xmax] = [xaxis.range ? xaxis.range[0] : 0, xaxis.range ? xaxis.range[1] : duration];
+            if (!xaxis.range) {
+                xmin = 0;
+                xmax = duration;
+            }
+            const center = (xmin + xmax) / 2;
+            const halfRange = (xmax - xmin) / 4;
+            Plotly.relayout('frameChart', {'xaxis.range': [center - halfRange, center + halfRange]});
+            e.preventDefault();
+        } else if (e.key === '-') {
+            // Zoom out (double the x-axis range)
+            const xaxis = layout.xaxis;
+            let [xmin, xmax] = [xaxis.range ? xaxis.range[0] : 0, xaxis.range ? xaxis.range[1] : duration];
+            if (!xaxis.range) {
+                xmin = 0;
+                xmax = duration;
+            }
+            const center = (xmin + xmax) / 2;
+            let newMin = Math.max(0, center - (xmax - xmin));
+            let newMax = Math.min(duration, center + (xmax - xmin));
+            Plotly.relayout('frameChart', {'xaxis.range': [newMin, newMax]});
+            e.preventDefault();
+        }
+        if (skipToIdx !== null) {
+            const targetFrame = jsonData.frames[skipToIdx];
+            const targetTime = parseFloat(targetFrame.best_effort_timestamp_time);
+            videoPlayer.pause();
+            // Only update marker after seeked
+            const onSeeked = function() {
+                updateCurrentFrameMarker(targetTime);
+                videoPlayer.removeEventListener('seeked', onSeeked);
+            };
+            videoPlayer.addEventListener('seeked', onSeeked);
+            videoPlayer.currentTime = targetTime;
+        }
     });
 }

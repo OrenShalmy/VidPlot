@@ -34,29 +34,26 @@
     <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
 </div>
 
-<!-- Video Player -->
-<div id="videoContainer">
-  <video id="videoPlayer" controls hidden>
+<!-- Video Player Section -->
+<div id="videoSection">
+  <video id="videoPlayer" controls>
     <source id="videoSource" src="" type="video/mp4">
     Your browser does not support the video tag.
   </video>
-  <div id="mediaInfo"></div>
+  <button id="toggleInfoBtn" title="Show/Hide Info">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+  </button>
+  <div id="mediaInfo" class="media-info-overlay">
+    <!-- Filled by mediainfo.js -->
+  </div>
 </div>
-  <script src="{{ url_for('static', filename='js/mediainfo.js') }}"></script>
 
-  <!-- Plotly Chart Container -->
+<!-- Frame Graph Section -->
+<div id="frameGraphSection">
   <div id="frameChart"></div>
-  
-  <!-- X-axis slider for frame navigation -->
-  <div style="width:90%;margin:0 auto;text-align:center;padding:10px 0;">
-    <input type="range" id="frameSlider" min="0" max="100" value="0" step="0.01" style="width:100%;">
-    <div id="sliderValue" style="color:#aaa;font-size:12px;margin-top:2px;"></div>
-  </div>
-  <!-- frame type checkboxes -->
-  <div class="toggles">  
-    <!-- <label><input type="checkbox" id="iFrameToggle" checked> I-Frames</label>
-    <label><input type="checkbox" id="pFrameToggle" checked> P-Frames</label>
-    <label><input type="checkbox" id="bFrameToggle" checked> B-Frames</label> -->
-  </div>
+</div>
+
+<div class="toggles"></div>
+<script src="{{ url_for('static', filename='js/mediainfo.js') }}"></script>
 </body>
 </html>
