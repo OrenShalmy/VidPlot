@@ -104,7 +104,17 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function resetLoadDropStatus() {
-        setLoadDropStatus("Load new video", "or drop a file here", { busy: false, error: false });
+        setLoadDropStatus("Load new video", "file, drop, or URL", { busy: false, error: false });
+    }
+
+    function isHttpUrl(value) {
+        if (!value || typeof value !== "string") return false;
+        try {
+            const u = new URL(value.trim());
+            return u.protocol === "http:" || u.protocol === "https:";
+        } catch (_) {
+            return false;
+        }
     }
 
     if (loadNewVideoBtn) {
@@ -357,6 +367,8 @@ document.addEventListener("DOMContentLoaded", function () {
         clearDropError();
         if (videoPlayer) videoPlayer.pause();
         setLoadDropStatus("Opening…", "Please wait", { busy: true });
+        const urlBtn = document.getElementById("urlOpenBtn");
+        if (urlBtn) urlBtn.disabled = true;
         startAnalyzePulse();
         try {
             const res = await fetch("/api/analyze", {
@@ -385,10 +397,36 @@ document.addEventListener("DOMContentLoaded", function () {
             resetLoadDropStatus();
             showDropZone();
             showDropError(err.message || "Analysis failed");
+        } finally {
+            if (urlBtn) urlBtn.disabled = false;
         }
     }
 
     window.vidplotOpenPath = analyzeLocalPath;
+
+    function openFromUrlInput() {
+        const input = document.getElementById("urlOpenInput");
+        const raw = (input?.value || "").trim();
+        if (!raw) {
+            showDropError("Enter an http:// or https:// video URL");
+            return;
+        }
+        if (!isHttpUrl(raw)) {
+            showDropError("URL must start with http:// or https://");
+            return;
+        }
+        analyzeLocalPath(raw);
+    }
+
+    const urlOpenForm = document.getElementById("urlOpenForm");
+    if (urlOpenForm) {
+        urlOpenForm.addEventListener("click", (e) => e.stopPropagation());
+        urlOpenForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openFromUrlInput();
+        });
+    }
 
     async function waitForNativeApi(timeoutMs = 5000) {
         const start = Date.now();
@@ -438,6 +476,17 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     dropArea.addEventListener("drop", (event) => {
+        const uriList = (
+            event.dataTransfer.getData("text/uri-list")
+            || event.dataTransfer.getData("text/plain")
+            || ""
+        ).trim().split(/\r?\n/).find((line) => line && !line.startsWith("#"));
+        if (uriList && isHttpUrl(uriList)) {
+            const input = document.getElementById("urlOpenInput");
+            if (input) input.value = uriList.trim();
+            analyzeLocalPath(uriList.trim());
+            return;
+        }
         const file = event.dataTransfer.files[0];
         if (!file) return;
         const path = fileSystemPath(file);
@@ -491,7 +540,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     dropArea.addEventListener("click", (e) => {
-        if (e.target.closest("#uploadProgress") || e.target.closest("#dropError")) return;
+        if (
+            e.target.closest("#uploadProgress")
+            || e.target.closest("#dropError")
+            || e.target.closest("#urlOpenForm")
+        ) {
+            return;
+        }
         if (isDesktopApp()) {
             pickNativeVideo();
         } else {

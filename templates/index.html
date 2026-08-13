@@ -39,7 +39,14 @@
 <div id="dropArea">
   <div class="drop-brand">VidPlot</div>
   <p>Drop a video here, or click to browse</p>
-  <span class="drop-hint">{% if desktop_mode %}Opens from its original path — no copy created{% else %}MP4, MOV, MKV, TS{% endif %}</span>
+  <span class="drop-hint">{% if desktop_mode %}Local path or HTTP(S) URL — no copy created{% else %}Local file or HTTP(S) URL · MP4, MOV, MKV, TS{% endif %}</span>
+  <form id="urlOpenForm" class="url-open-form" autocomplete="off">
+    <label class="url-open-label" for="urlOpenInput">Or open an HTTP(S) URL</label>
+    <div class="url-open-row">
+      <input type="url" id="urlOpenInput" name="url" placeholder="https://example.com/video.mp4" spellcheck="false" inputmode="url">
+      <button type="submit" id="urlOpenBtn">Open</button>
+    </div>
+  </form>
   <div id="dropError" class="drop-error" hidden></div>
   <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
 </div>
@@ -78,9 +85,9 @@
   </button>
   <div id="sideMenuPanel">
     <div class="side-menu-brand">VidPlot</div>
-    <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, or drop a video here">
+    <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, drop a file, or paste a URL on the open screen">
       <span class="load-drop-title">Load new video</span>
-      <span class="load-drop-hint">or drop a file here</span>
+      <span class="load-drop-hint">file, drop, or URL</span>
     </button>
 
     <div class="config-section">

@@ -5,7 +5,8 @@ import hashlib
 import shutil
 import subprocess
 import json
-from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort
+from urllib.parse import urlparse, unquote
+from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect
 from werkzeug.utils import secure_filename
 
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265', 'ts', 'm4v', 'mkv', 'avi'}
@@ -179,10 +180,41 @@ def resolve_binary(configured_path, fallback_name):
     )
 
 
+def is_http_url(value):
+    if not value or not isinstance(value, str):
+        return False
+    try:
+        parsed = urlparse(value.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in ('http', 'https') and bool(parsed.netloc)
+
+
+def source_display_name(source):
+    """Best-effort filename for UI / analysis cache keys."""
+    if is_http_url(source):
+        path = unquote(urlparse(source).path or '')
+        name = os.path.basename(path.rstrip('/'))
+        if name:
+            return name
+        host = urlparse(source).netloc or 'remote'
+        return f'{host}-video'
+    return os.path.basename(source)
+
+
 def validate_video_path(path):
+    """Accept a local filesystem path or an http(s) URL for ffprobe/ffmpeg."""
     if not path or not isinstance(path, str):
-        raise ValueError('No file path provided')
-    resolved = os.path.abspath(os.path.expanduser(path.strip()))
+        raise ValueError('No file path or URL provided')
+    raw = path.strip()
+    if is_http_url(raw):
+        # Extensionless CDN URLs are fine — ffprobe validates the media
+        parsed = urlparse(raw)
+        if parsed.scheme not in ('http', 'https'):
+            raise ValueError('Only http:// and https:// URLs are supported')
+        return raw
+
+    resolved = os.path.abspath(os.path.expanduser(raw))
     if not os.path.isfile(resolved):
         raise ValueError(f'File not found: {path}')
     if not allowed_file(resolved):
@@ -190,6 +222,16 @@ def validate_video_path(path):
     if not os.access(resolved, os.R_OK):
         raise ValueError('File is not readable')
     return resolved
+
+
+def ffprobe_input_args(source):
+    """Extra ffprobe flags for network inputs."""
+    if is_http_url(source):
+        return [
+            '-rw_timeout', '30000000',  # 30s I/O timeout (microseconds)
+            '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
+        ]
+    return []
 
 
 def friendly_ffprobe_error(stderr, filename=''):
@@ -209,6 +251,18 @@ def friendly_ffprobe_error(stderr, filename=''):
         return f'Permission denied reading {name}.'
     if 'no such file' in lower:
         return f'File not found: {name}'
+    if '404' in lower or 'not found' in lower:
+        return f'URL not found (404): {name}'
+    if '403' in lower or 'forbidden' in lower:
+        return f'Access denied fetching URL: {name}'
+    if 'connection refused' in lower:
+        return f'Connection refused for {name}.'
+    if 'timed out' in lower or 'timeout' in lower or 'error number -138' in lower:
+        return f'Timed out reading {name}. Check the URL or your network.'
+    if 'ssl' in lower or 'certificate' in lower:
+        return f'TLS/SSL error while fetching {name}.'
+    if 'http' in lower and ('error' in lower or 'fail' in lower):
+        return f'Could not fetch URL: {name}'
 
     # Prefer the last meaningful stderr line over the raw CalledProcessError text
     for line in reversed(text.splitlines()):
@@ -252,6 +306,7 @@ def extract_mean_qp_per_frame(ffmpeg_bin, video_path):
         ffmpeg_bin,
         '-hide_banner',
         '-nostats',
+        *ffprobe_input_args(video_path),
         '-debug:v', 'qp',
         '-i', video_path,
         '-an',
@@ -327,8 +382,8 @@ def attach_mean_qp(frames, mean_qps):
 
 
 def analysis_json_paths(video_path):
-    """Return (json_filename, output_json_path) for a source video path."""
-    filename = os.path.basename(video_path)
+    """Return (json_filename, output_json_path) for a source path or URL."""
+    filename = source_display_name(video_path)
     stem = secure_filename(os.path.splitext(filename)[0]) or 'video'
     path_hash = hashlib.sha1(video_path.encode('utf-8')).hexdigest()[:10]
     json_filename = f'{stem}_{path_hash}_data.json'
@@ -349,10 +404,10 @@ def analyze_video_file(video_path):
     global current_source_path
 
     video_path = validate_video_path(video_path)
-    filename = os.path.basename(video_path)
+    filename = source_display_name(video_path)
+    remote = is_http_url(video_path)
     json_filename, output_json_path = analysis_json_paths(video_path)
 
-    file_size = os.path.getsize(video_path)
     config = load_config()
     ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
     ffmpeg_available = ffmpeg_is_available(config)
@@ -361,6 +416,7 @@ def analyze_video_file(video_path):
         ffprobe_bin,
         '-hide_banner',
         '-loglevel', 'error',
+        *ffprobe_input_args(video_path),
         '-print_format', 'json',
         '-show_format',
         '-show_streams',
@@ -387,23 +443,35 @@ def analyze_video_file(video_path):
 
     if 'format' not in json_data:
         json_data['format'] = {}
-    json_data['format']['file_size'] = file_size
+    if remote:
+        # Prefer size from the remote format header when present
+        remote_size = json_data['format'].get('size')
+        try:
+            json_data['format']['file_size'] = int(remote_size) if remote_size is not None else None
+        except (TypeError, ValueError):
+            json_data['format']['file_size'] = None
+    else:
+        json_data['format']['file_size'] = os.path.getsize(video_path)
     json_data['format']['filename'] = filename
     json_data['format']['source_path'] = video_path
+    json_data['format']['is_remote'] = remote
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
 
     current_source_path = video_path
     duration = float(json_data.get('format', {}).get('duration', 0) or 0)
+    # Play remote URLs directly in <video>; local files go through Flask
+    video_url = video_path if remote else url_for('serve_source')
 
     return {
         'message': 'File opened successfully',
         'json_url': url_for('serve_log', filename=json_filename),
-        'video_url': url_for('serve_source'),
+        'video_url': video_url,
         'duration': duration,
         'filename': filename,
         'source_path': video_path,
+        'is_remote': remote,
         'status': 'opened',
         'frames_pending': True,
         'qp_pending': ffmpeg_available,
@@ -414,7 +482,7 @@ def analyze_video_file(video_path):
 def analyze_frames_for_path(video_path):
     """Per-frame size/type probe; merges into the saved analysis JSON."""
     video_path = validate_video_path(video_path)
-    filename = os.path.basename(video_path)
+    filename = source_display_name(video_path)
     config = load_config()
     ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
     ffmpeg_available = ffmpeg_is_available(config)
@@ -423,6 +491,7 @@ def analyze_frames_for_path(video_path):
         ffprobe_bin,
         '-hide_banner',
         '-loglevel', 'error',
+        *ffprobe_input_args(video_path),
         '-select_streams', 'v:0',
         '-print_format', 'json',
         '-show_entries', 'frame=pict_type,best_effort_timestamp_time,pkt_pts_time,pkt_dts_time,pkt_size',
@@ -510,8 +579,12 @@ def service_worker():
 
 @app.route('/media/source')
 def serve_source():
-    """Stream the currently opened video from its original path."""
-    if not current_source_path or not os.path.isfile(current_source_path):
+    """Stream the currently opened local video, or redirect to a remote URL."""
+    if not current_source_path:
+        abort(404)
+    if is_http_url(current_source_path):
+        return redirect(current_source_path)
+    if not os.path.isfile(current_source_path):
         abort(404)
     return send_file(current_source_path)
 
@@ -584,9 +657,9 @@ def update_config():
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_local_path():
-    """Analyze a video at its original filesystem path (desktop mode)."""
+    """Analyze a local path or http(s) URL via ffprobe (no server-side copy)."""
     data = request.get_json(silent=True) or {}
-    path = data.get('path')
+    path = data.get('path') or data.get('url')
     try:
         result = analyze_video_file(path)
         return jsonify(result)

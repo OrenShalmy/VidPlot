@@ -108,6 +108,75 @@ body {
   font-family: var(--mono);
 }
 
+.url-open-form {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(440px, 78vw);
+  margin-top: 10px;
+  cursor: default;
+}
+
+.url-open-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  opacity: 0.8;
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.url-open-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.url-open-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.url-open-row input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.url-open-row input:focus {
+  border-color: var(--accent);
+}
+
+.url-open-row button {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-family: var(--sans, "DM Sans", sans-serif);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.url-open-row button:hover {
+  border-color: var(--accent);
+}
+
+.url-open-row button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .drop-error {
   position: relative;
   z-index: 1;

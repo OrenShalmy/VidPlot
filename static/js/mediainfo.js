@@ -228,7 +228,7 @@ function updatemediaInfo(jsonData) {
         <h3>Properties</h3>
         <div class="info-subtitle">Container</div>
         ${row('File', shortName)}
-        ${row('Path', format.source_path)}
+        ${row(format.is_remote ? 'URL' : 'Path', format.source_path)}
         ${row('Format', format.format_long_name || format.format_name)}
         ${row('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
         ${row('Duration', formatDuration(format.duration))}

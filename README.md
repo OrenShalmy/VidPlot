@@ -4,7 +4,7 @@ Local video frame analyzer for inspecting per-frame size, frame type (I/P/B), ti
 
 ## Features
 
-- Drag-and-drop or native file open (desktop)
+- Drag-and-drop, native file open (desktop), or HTTP(S) URL (ffprobe/ffmpeg stream the remote file)
 - Staged analysis: streams/properties → frame chart → QP (when available)
 - Per-frame hover: frame number, timecode, DTS, PTS, size, type, Avg QP
 - JKL shuttle, Space play/pause, `,` / `.` (or `<` / `>`) frame step, arrow keys ±1s
@@ -72,9 +72,11 @@ Output lands under `dist/` (platform-specific). Paths for `ffprobe` / `ffmpeg` c
 
 ## Usage
 
-1. Open a video (drag-and-drop or file picker).
+1. Open a video (drag-and-drop, file picker, or paste an `http://` / `https://` URL).
 2. Wait for properties, then the frame graph (QP fills in when supported).
 3. Hover bars for frame details; use keyboard shortcuts to scrub and shuttle.
+
+Remote URLs are probed in place (no download copy). Preview playback uses the URL directly in the video element, so the host must allow media access from the app.
 
 ## License
 
