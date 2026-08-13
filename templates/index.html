@@ -1,59 +1,122 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#1e1e1e">
+  <meta name="theme-color" content="#181c24">
   <title>VidPlot - Video Frame Analysis</title>
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192x192.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192x192.png') }}">
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/player.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
   <script src="{{ url_for('static', filename='js/plotly.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script>
-    // Register Service Worker
+    // Avoid stale cached JS in the desktop shell; SW only for browser use
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/js/sw.js')
-          .then(registration => {
-            console.log('ServiceWorker registration successful');
-          })
-          .catch(err => {
-            console.log('ServiceWorker registration failed: ', err);
+        const desktop = document.body && document.body.dataset.desktop === '1';
+        if (desktop) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((reg) => reg.unregister());
           });
+          return;
+        }
+        navigator.serviceWorker.register('/static/js/sw.js')
+          .then(() => console.log('ServiceWorker registration successful'))
+          .catch(err => console.log('ServiceWorker registration failed: ', err));
       });
     }
   </script>
 </head>
-<body>
+<body{% if desktop_mode %} data-desktop="1"{% endif %}>
 
-<!-- Drag and Drop Uploader -->
 <div id="dropArea">
-    <p>Drag & Drop a video file or click to select</p>
-    <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
+  <div class="drop-brand">VidPlot</div>
+  <p>Drop a video here, or click to browse</p>
+  <span class="drop-hint">{% if desktop_mode %}Opens from its original path — no copy created{% else %}MP4, MOV, MKV, TS{% endif %}</span>
+  <div id="dropError" class="drop-error" hidden></div>
+  <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
 </div>
 
-<!-- Video Player Section -->
-<div id="videoSection">
-  <video id="videoPlayer" controls>
-    <source id="videoSource" src="" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-  <button id="toggleInfoBtn" title="Show/Hide Info">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="8"/></svg>
+<main id="workspace">
+  <section id="videoSection">
+    <div id="videoWrap">
+      <video id="videoPlayer">
+        <source id="videoSource" src="" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+    <aside id="streamTree" aria-label="Tracks"></aside>
+    <aside id="mediaInfo" class="media-info-overlay"></aside>
+  </section>
+
+  <section id="frameGraphSection">
+    <div id="frameChart"></div>
+    <div id="plotControls">
+      <div id="playerControls">
+        <button type="button" id="playPauseBtn" title="Play/Pause" aria-label="Play/Pause">
+          <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+        </button>
+        <span id="playerTime">0:00 / 0:00</span>
+        <input type="range" id="seekBar" min="0" max="0" value="0" step="0.001" aria-label="Seek">
+        <span id="analysisStatus" class="analysis-status" aria-live="polite"></span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<aside id="sideMenu" class="collapsed" aria-hidden="true">
+  <button type="button" id="sideMenuToggle" title="Menu" aria-expanded="false" aria-controls="sideMenuPanel">
+    <span class="side-menu-toggle-icon" aria-hidden="true"></span>
   </button>
-  <div id="mediaInfo" class="media-info-overlay">
-    <!-- Filled by mediainfo.js -->
+  <div id="sideMenuPanel">
+    <div class="side-menu-brand">VidPlot</div>
+    <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, or drop a video here">
+      <span class="load-drop-title">Load new video</span>
+      <span class="load-drop-hint">or drop a file here</span>
+    </button>
+
+    <div class="config-section">
+      <h4>Configure</h4>
+      <label class="config-field" for="ffprobePathInput">
+        <span>ffprobe path</span>
+        <input type="text" id="ffprobePathInput" placeholder="/usr/local/bin/ffprobe" spellcheck="false" autocomplete="off">
+      </label>
+      <label class="config-field" for="ffmpegPathInput">
+        <span>ffmpeg path</span>
+        <input type="text" id="ffmpegPathInput" placeholder="/usr/local/bin/ffmpeg" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="config-hint">Leave blank to use binaries on PATH. ffmpeg is used for per-frame Avg QP.</p>
+      <button type="button" id="saveConfigBtn" class="side-menu-action config-save">Save</button>
+      <p id="configStatus" class="config-status" aria-live="polite"></p>
+    </div>
+
+    <div class="shortcuts-guide">
+      <h4>Shortcuts</h4>
+      <ul>
+        <li><span class="shortcut-keys"><kbd>→</kbd></span><span class="shortcut-desc">Skip +1s</span></li>
+        <li><span class="shortcut-keys"><kbd>←</kbd></span><span class="shortcut-desc">Skip −1s</span></li>
+        <li><span class="shortcut-keys"><kbd>&gt;</kbd><kbd>.</kbd></span><span class="shortcut-desc">Next frame</span></li>
+        <li><span class="shortcut-keys"><kbd>&lt;</kbd><kbd>,</kbd></span><span class="shortcut-desc">Prev frame</span></li>
+        <li><span class="shortcut-keys"><kbd>Space</kbd></span><span class="shortcut-desc">Play / pause</span></li>
+        <li><span class="shortcut-keys"><kbd>J</kbd></span><span class="shortcut-desc">Reverse 1×–4×</span></li>
+        <li><span class="shortcut-keys"><kbd>K</kbd></span><span class="shortcut-desc">Stop</span></li>
+        <li><span class="shortcut-keys"><kbd>L</kbd></span><span class="shortcut-desc">Play 1×–4×</span></li>
+        <li><span class="shortcut-keys"><kbd>+</kbd></span><span class="shortcut-desc">Zoom in</span></li>
+        <li><span class="shortcut-keys"><kbd>−</kbd></span><span class="shortcut-desc">Zoom out</span></li>
+      </ul>
+    </div>
   </div>
-</div>
+</aside>
 
-<!-- Frame Graph Section -->
-<div id="frameGraphSection">
-  <div id="frameChart"></div>
-</div>
-
-<div class="toggles"></div>
+<script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mediainfo.js') }}"></script>
 </body>
 </html>

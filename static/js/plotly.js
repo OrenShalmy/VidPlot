@@ -1,4 +1,155 @@
+function formatFrameTimecode(seconds, fps) {
+    const t = Math.max(0, Number(seconds) || 0);
+    const rate = (Number.isFinite(fps) && fps > 0) ? fps : 25;
+    const fpsRounded = Math.max(1, Math.round(rate));
+    const totalFrames = Math.round(t * rate);
+    const ff = ((totalFrames % fpsRounded) + fpsRounded) % fpsRounded;
+    let rem = Math.floor(totalFrames / fpsRounded);
+    const ss = rem % 60;
+    rem = Math.floor(rem / 60);
+    const mm = rem % 60;
+    const hh = Math.floor(rem / 60);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(hh)}:${pad(mm)}:${pad(ss)}.${pad(ff)}`;
+}
+
+function estimateJsonFps(jsonData) {
+    const video = (jsonData?.streams || []).find((s) => s.codec_type === 'video') || {};
+    const rate = video.avg_frame_rate || video.r_frame_rate;
+    if (rate && String(rate).includes('/')) {
+        const [a, b] = String(rate).split('/').map(Number);
+        if (b && a) return a / b;
+    }
+    const n = parseFloat(rate);
+    if (Number.isFinite(n) && n > 0) return n;
+    const frames = jsonData?.frames || [];
+    if (frames.length >= 2) {
+        const t0 = parseFloat(frames[0].best_effort_timestamp_time);
+        const t1 = parseFloat(frames[1].best_effort_timestamp_time);
+        if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) return 1 / (t1 - t0);
+    }
+    return 25;
+}
+
+function formatSecondsLabel(value) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? `${n.toFixed(4)} s` : '—';
+}
+
+function buildFrameCustomdata(frames, fps) {
+    const total = (frames || []).length;
+    const rate = (Number.isFinite(fps) && fps > 0) ? fps : 25;
+    return (frames || []).map((f, i) => {
+        const qp = f.mean_qp;
+        const qpLabel = (qp === null || qp === undefined || qp === '')
+            ? '—'
+            : Number(qp).toFixed(2);
+        // Prefer presentation time for timecode; fall back to best-effort
+        const pts = parseFloat(f.pkt_pts_time);
+        const tcBase = Number.isFinite(pts)
+            ? pts
+            : parseFloat(f.best_effort_timestamp_time);
+        return [
+            i + 1,
+            total,
+            formatFrameTimecode(tcBase, rate),
+            formatSecondsLabel(f.pkt_dts_time),
+            formatSecondsLabel(f.pkt_pts_time),
+            f.pict_type || '—',
+            qpLabel,
+        ];
+    });
+}
+
+function vidplotUpdateMeanQp(meanQps) {
+    const jsonData = window.vidplotJsonData;
+    if (!jsonData || !Array.isArray(jsonData.frames)) return;
+    const qps = Array.isArray(meanQps) ? meanQps : [];
+    jsonData.frames.forEach((frame, index) => {
+        frame.mean_qp = index < qps.length ? qps[index] : null;
+    });
+    jsonData.qp_available = qps.some((v) => v !== null && v !== undefined);
+    jsonData.qp_pending = false;
+    const chartDiv = document.getElementById('frameChart');
+    if (!chartDiv || typeof Plotly === 'undefined' || !chartDiv.data) return;
+    const fps = estimateJsonFps(jsonData);
+    Plotly.restyle(chartDiv, { customdata: [buildFrameCustomdata(jsonData.frames, fps)] }, [0]);
+}
+
+/** Singleton transport so chart re-inits never stack listeners or leave a stale reverse RAF. */
+function getVidplotTransport() {
+    if (window._vidplotTransport) return window._vidplotTransport;
+    const t = {
+        video: null,
+        api: null,
+        reverseRafId: null,
+        shuttleRate: 0,
+        suppressPauseSideEffects: false,
+        onPlay: null,
+        onPause: null,
+        onKeyDown: null,
+        stopReverse() {
+            if (t.reverseRafId !== null) {
+                cancelAnimationFrame(t.reverseRafId);
+                t.reverseRafId = null;
+            }
+        },
+        teardown() {
+            t.stopReverse();
+            t.shuttleRate = 0;
+            if (t.onKeyDown) {
+                document.removeEventListener('keydown', t.onKeyDown, true);
+                t.onKeyDown = null;
+            }
+            if (t.video) {
+                if (t.onPlay) t.video.removeEventListener('play', t.onPlay);
+                if (t.onPause) t.video.removeEventListener('pause', t.onPause);
+            }
+            t.onPlay = null;
+            t.onPause = null;
+            t.api = null;
+            t.video = null;
+            t.suppressPauseSideEffects = false;
+        },
+    };
+    window._vidplotTransport = t;
+    return t;
+}
+
+function isVidplotTypingTarget(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    if (el.closest) {
+        if (el.closest('#sideMenu.collapsed')) return false;
+        const hiddenHost = el.closest('[hidden], [aria-hidden="true"]');
+        if (hiddenHost) return false;
+    }
+    try {
+        const style = window.getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none') return false;
+    } catch (_) {
+        /* ignore */
+    }
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+        const type = (el.type || '').toLowerCase();
+        return type === 'text' || type === 'search' || type === 'email'
+            || type === 'password' || type === 'number' || type === 'url'
+            || type === '' || type === 'tel';
+    }
+    return !!el.isContentEditable;
+}
+
 function setupPlotlyChart(jsonData) {
+    window.vidplotJsonData = jsonData;
+    if (!jsonData?.frames?.length) {
+        const chart = document.getElementById('frameChart');
+        if (chart) {
+            chart.innerHTML = '<div class="chart-placeholder">No frame data</div>';
+        }
+        return;
+    }
+
     // --- Helper Functions ---
     function bytesToMbps(bytes, duration) {
         return (bytes * 8) / (1024 * 1024 * duration);
@@ -29,13 +180,8 @@ function setupPlotlyChart(jsonData) {
         });
         return closestIdx;
     }
-    function updateCurrentFrameMarker(currentTime) {
-        // Snap to the closest frame timestamp
-        const closestFrame = findClosestFrame(currentTime, jsonData.frames);
-        const snappedTime = closestFrame ? parseFloat(closestFrame.best_effort_timestamp_time) : currentTime;
-        // Remove previous marker if exists
-        let updateShapes = layout.shapes.filter(s => s.name !== currentFrameShapeId);
-        // Add new marker
+    function buildPlayheadShapes(snappedTime) {
+        const updateShapes = layout.shapes.filter(s => s.name !== currentFrameShapeId);
         updateShapes.push({
             type: 'line',
             xref: 'x',
@@ -51,22 +197,118 @@ function setupPlotlyChart(jsonData) {
             },
             name: currentFrameShapeId
         });
-        Plotly.relayout('frameChart', { shapes: updateShapes });
+        return updateShapes;
+    }
+
+    function syncPlayheadView(currentTime, force) {
+        if (!layout) return;
+        const closestFrame = findClosestFrame(currentTime, jsonData.frames);
+        const snappedTime = closestFrame
+            ? parseFloat(closestFrame.best_effort_timestamp_time)
+            : currentTime;
+        const updateShapes = buildPlayheadShapes(snappedTime);
+        layout.shapes = updateShapes;
+
+        const range = layout.xaxis.range || [0, duration];
+        const visible = Math.max(range[1] - range[0], frameDuration);
+        const followPayload = { shapes: updateShapes };
+
+        // When zoomed in, keep the playhead centered so the graph slides with playback
+        if (visible < duration - 1e-6) {
+            const newRange = clampZoomRange(snappedTime, visible);
+            layout.xaxis.range = newRange;
+            layout.xaxis.autorange = false;
+            followPayload['xaxis.range'] = newRange;
+            followPayload['xaxis.autorange'] = false;
+        }
+
+        const now = performance.now();
+        if (!force && now - lastFollowRelayout < 40) {
+            pendingFollowTime = currentTime;
+            if (followRafId === null) {
+                followRafId = requestAnimationFrame(() => {
+                    followRafId = null;
+                    if (pendingFollowTime !== null) {
+                        const t = pendingFollowTime;
+                        pendingFollowTime = null;
+                        syncPlayheadView(t, true);
+                    }
+                });
+            }
+            return;
+        }
+        lastFollowRelayout = now;
+        pendingFollowTime = null;
+        syncingZoomSlider = true;
+        Plotly.relayout('frameChart', followPayload).then(() => {
+            syncingZoomSlider = false;
+        }).catch(() => {
+            syncingZoomSlider = false;
+        });
+    }
+
+    function updateCurrentFrameMarker(currentTime) {
+        syncPlayheadView(currentTime, false);
+    }
+    let seekGeneration = 0;
+    function seekToTime(time, pauseAfter) {
+        const clamped = Math.max(0, Math.min(duration, time));
+        if (pauseAfter) {
+            transport.suppressPauseSideEffects = true;
+            videoPlayer.pause();
+            transport.suppressPauseSideEffects = false;
+        }
+        const token = ++seekGeneration;
+        const onSeeked = function() {
+            videoPlayer.removeEventListener('seeked', onSeeked);
+            if (token !== seekGeneration) return;
+            updateCurrentFrameMarker(clamped);
+        };
+        videoPlayer.addEventListener('seeked', onSeeked);
+        videoPlayer.currentTime = clamped;
+        // Some engines skip 'seeked' for tiny moves — keep marker honest
+        updateCurrentFrameMarker(clamped);
+    }
+    function stepFrame(delta) {
+        if (!jsonData.frames || jsonData.frames.length === 0) return;
+        pausePlayback();
+        const t = Number(videoPlayer.currentTime);
+        if (!Number.isFinite(t)) return;
+        const currentIdx = findFrameIndexByTime(t, jsonData.frames);
+        const closestTime = parseFloat(jsonData.frames[currentIdx].best_effort_timestamp_time);
+        let targetIdx = currentIdx;
+        // If playhead is past the closest frame, forward should advance; if before, backward should retreat
+        if (delta > 0 && t > closestTime + frameDuration * 0.05) {
+            targetIdx = currentIdx + 1;
+        } else if (delta < 0 && t < closestTime - frameDuration * 0.05) {
+            targetIdx = currentIdx - 1;
+        } else {
+            targetIdx = currentIdx + delta;
+        }
+        targetIdx = Math.max(0, Math.min(jsonData.frames.length - 1, targetIdx));
+        const targetTime = parseFloat(jsonData.frames[targetIdx].best_effort_timestamp_time);
+        if (!Number.isFinite(targetTime)) return;
+        seekToTime(targetTime, true);
     }
 
     // --- Variable Setup ---
-    let currentView = 'bar';
+    let syncingZoomSlider = false;
+    let followRafId = null;
+    let pendingFollowTime = null;
+    let lastFollowRelayout = 0;
+    let currentZoomLevel = 1;
+    let layout = null;
     const currentFrameShapeId = 'current-frame-marker';
-    const togglesDiv = document.querySelector('div.toggles');
     const videoPlayer = document.getElementById('videoPlayer');
-    if (!togglesDiv || !videoPlayer) {
+    if (!videoPlayer) {
         console.error('Required DOM elements not found.');
         return;
     }
+    const transport = getVidplotTransport();
+    // Tear down prior chart session (listeners + reverse RAF) before rebinding
+    transport.teardown();
+    transport.video = videoPlayer;
     const duration = parseFloat(jsonData.format.duration);
-    const iFrames = jsonData.frames.filter(frame => frame.pict_type === 'I');
-    const pFrames = jsonData.frames.filter(frame => frame.pict_type === 'P');
-    const bFrames = jsonData.frames.filter(frame => frame.pict_type === 'B');
     const allFrames = jsonData.frames.map(f => ({
         ...f,
         timestamp: parseFloat(f.best_effort_timestamp_time),
@@ -74,78 +316,202 @@ function setupPlotlyChart(jsonData) {
     }));
     const frameTimestamps = allFrames.map(f => f.timestamp);
     const frameDuration = allFrames.length > 1 ? (frameTimestamps[1] - frameTimestamps[0]) : 1 / 30;
-    const bitRate = jsonData.streams[0].bit_rate;
-    const mbps = bitRate / (1024 * 1000);
+    const primaryVideo = (jsonData.streams || []).find((s) => s.codec_type === 'video')
+        || jsonData.streams?.[0]
+        || {};
+    const bitRate = primaryVideo.bit_rate;
+    const mbps = bitRate ? bitRate / (1024 * 1000) : 0;
+    const maxZoom = Math.max(2, Math.min(200, Math.ceil(duration / Math.max(frameDuration * 4, 0.05))));
 
-    // --- UI Setup ---
-    togglesDiv.innerHTML = `
-        <button id="barView" class="view-switcher active">Bar View</button>
-        <button id="lineView" class="view-switcher">Line View</button>
-        <button id="resetZoom" class="view-switcher">Reset Zoom</button>
-    `;
-    togglesDiv.style.visibility = 'visible';
+    // --- Playback Helpers (state on transport singleton) ---
+    function stopReversePlayback() {
+        transport.stopReverse();
+    }
 
-    // --- Plotly Traces and Layout ---
-    function createTraces(type) {
-        if (type === 'bar') {
-            // Plot all frames as a single bar trace, color by frame type
-            const colors = jsonData.frames.map(f => {
-                if (f.pict_type === 'I') return '#0161ff';
-                if (f.pict_type === 'P') return '#70a6ff';
-                if (f.pict_type === 'B') return '#ffffff';
-                return '#888888';
-            });
-            return [
-                {
-                    x: jsonData.frames.map(f => parseFloat(f.best_effort_timestamp_time)),
-                    y: jsonData.frames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-                    type: 'bar',
-                    name: 'Frames',
-                    marker: { color: colors },
-                    hovertemplate: "Timestamp: %{x:.4f} s<br>Size: %{y:.2f} Mb<br>Type: %{customdata}",
-                    customdata: jsonData.frames.map(f => f.pict_type)
-                }
-            ];
+    function playBackwardAt(speed) {
+        const rate = Math.max(1, Math.min(4, speed));
+        stopReversePlayback();
+        // pause() fires a 'pause' listener that would clear shuttleRate before reverse starts
+        transport.suppressPauseSideEffects = true;
+        videoPlayer.pause();
+        transport.suppressPauseSideEffects = false;
+        let lastTs = performance.now();
+        function tick(now) {
+            // Ignore stale RAF from a previous chart/video session
+            if (transport.video !== videoPlayer || transport.shuttleRate >= 0) {
+                transport.reverseRafId = null;
+                return;
+            }
+            const dt = ((now - lastTs) / 1000) * rate;
+            lastTs = now;
+            const nextTime = videoPlayer.currentTime - dt;
+            if (nextTime <= 0) {
+                videoPlayer.currentTime = 0;
+                transport.shuttleRate = 0;
+                syncPlayheadView(0, true);
+                stopReversePlayback();
+                return;
+            }
+            videoPlayer.currentTime = nextTime;
+            syncPlayheadView(nextTime, false);
+            transport.reverseRafId = requestAnimationFrame(tick);
+        }
+        transport.reverseRafId = requestAnimationFrame(tick);
+    }
+
+    function applyShuttle(rate) {
+        const next = Math.max(-4, Math.min(4, rate | 0));
+        transport.shuttleRate = next;
+        if (next === 0) {
+            stopReversePlayback();
+            videoPlayer.pause();
+            videoPlayer.playbackRate = 1;
+            return;
+        }
+        if (next > 0) {
+            stopReversePlayback();
+            videoPlayer.playbackRate = next;
+            videoPlayer.play().catch(() => {});
+            return;
+        }
+        playBackwardAt(-next);
+    }
+
+    function bumpShuttleForward() {
+        if (transport.shuttleRate <= 0) applyShuttle(1);
+        else applyShuttle(Math.min(4, transport.shuttleRate + 1));
+    }
+
+    function bumpShuttleBackward() {
+        if (transport.shuttleRate >= 0) applyShuttle(-1);
+        else applyShuttle(Math.max(-4, transport.shuttleRate - 1));
+    }
+
+    function pausePlayback() {
+        applyShuttle(0);
+    }
+
+    function togglePlayback() {
+        if (transport.shuttleRate !== 0 || transport.reverseRafId !== null || !videoPlayer.paused) {
+            pausePlayback();
         } else {
-            const allSorted = [...jsonData.frames].sort((a, b) => 
-                parseFloat(a.best_effort_timestamp_time) - parseFloat(b.best_effort_timestamp_time)
-            );
-            return [{
-                x: allSorted.map(f => parseFloat(f.best_effort_timestamp_time)),
-                y: allSorted.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
-                type: 'scatter',
-                mode: 'lines',
-                name: 'Overall Bitrate',
-                line: { color: '#70a6ff', width: 2 },
-                hovertemplate: "Timestamp: %{x:.4f} s<br>Bitrate: %{y:.2f} Mb/s"
-            }];
+            applyShuttle(1);
         }
     }
-    let traces = createTraces('bar');
-    const layout = {
+
+    // --- Zoom Helpers ---
+    function getZoomCenter() {
+        if (layout.xaxis.range) {
+            return (layout.xaxis.range[0] + layout.xaxis.range[1]) / 2;
+        }
+        return videoPlayer.currentTime || duration / 2;
+    }
+    function clampZoomRange(center, visibleDuration) {
+        const half = visibleDuration / 2;
+        let min = center - half;
+        let max = center + half;
+        if (min < 0) {
+            min = 0;
+            max = Math.min(duration, visibleDuration);
+        }
+        if (max > duration) {
+            max = duration;
+            min = Math.max(0, duration - visibleDuration);
+        }
+        return [min, max];
+    }
+    function applyZoomLevel(zoomLevel, centerTime) {
+        const level = Math.max(1, Math.min(maxZoom, zoomLevel));
+        let range;
+        if (level <= 1) {
+            range = [0, duration];
+        } else {
+            const visibleDuration = duration / level;
+            range = clampZoomRange(centerTime ?? getZoomCenter(), visibleDuration);
+        }
+        layout.xaxis.range = range;
+        layout.xaxis.autorange = false;
+        currentZoomLevel = level;
+        syncingZoomSlider = true;
+        Plotly.relayout('frameChart', {
+            'xaxis.autorange': false,
+            'xaxis.range': range
+        }).then(() => {
+            syncingZoomSlider = false;
+        });
+    }
+    function zoomLevelFromRange(range) {
+        if (!range || range.length < 2) return 1;
+        const visible = Math.max(range[1] - range[0], frameDuration);
+        return Math.max(1, Math.min(maxZoom, duration / visible));
+    }
+
+    // --- Plotly Traces and Layout ---
+    function createTraces() {
+        const colors = jsonData.frames.map(f => {
+            if (f.pict_type === 'I') return '#0161ff';
+            if (f.pict_type === 'P') return '#70a6ff';
+            if (f.pict_type === 'B') return 'rgba(224, 224, 224, 0.85)';
+            return '#888888';
+        });
+        const fps = estimateJsonFps(jsonData);
+        return [
+            {
+                x: jsonData.frames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                y: jsonData.frames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
+                type: 'bar',
+                name: 'Frames',
+                marker: { color: colors },
+                hovertemplate:
+                    "Frame #: %{customdata[0]} / %{customdata[1]}<br>" +
+                    "Timecode: %{customdata[2]}<br>" +
+                    "DTS: %{customdata[3]}<br>" +
+                    "PTS: %{customdata[4]}<br>" +
+                    "Size: %{y:.2f} Mb<br>" +
+                    "Type: %{customdata[5]}<br>" +
+                    "Avg QP: %{customdata[6]}" +
+                    "<extra></extra>",
+                customdata: buildFrameCustomdata(jsonData.frames, fps)
+            }
+        ];
+    }
+    function getChartHeight() {
+        const section = document.getElementById('frameGraphSection');
+        const controls = document.getElementById('plotControls');
+        if (!section) return 220;
+        const controlsHeight = controls ? controls.offsetHeight : 56;
+        const available = section.clientHeight - controlsHeight - 4;
+        return Math.max(140, available);
+    }
+
+    let traces = createTraces();
+    layout = {
         title: '',
         xaxis: {
-            title: 'Timestamp (seconds)',
-            fixedrange: false
+            title: { text: 'Timestamp (s)', font: { size: 11, color: '#8b93a7' } },
+            color: '#8b93a7',
+            gridcolor: 'rgba(255,255,255,0.04)',
+            zeroline: false,
+            fixedrange: false,
+            range: [0, duration],
+            autorange: false
         },
         yaxis: {
-            title: 'Frame Size (Mb)',
-            gridcolor: '#444',
+            title: { text: 'Frame size (Mb)', font: { size: 11, color: '#8b93a7' } },
+            color: '#8b93a7',
+            gridcolor: 'rgba(255,255,255,0.06)',
+            zeroline: false,
             fixedrange: true
         },
-        plot_bgcolor: '#282828',
-        paper_bgcolor: '#1e1e1e',
-        font: { color: '#e0e0e0' },
+        plot_bgcolor: '#181c24',
+        paper_bgcolor: '#181c24',
+        font: { color: '#e0e0e0', family: 'DM Sans, sans-serif', size: 12 },
         zoommode: 'x',
         dragmode: 'zoom',
-        legend: {
-            x: 0.05,
-            y: 0.95,
-            font: { color: '#e0e0e0' }
-        },
-        height: 400,
+        showlegend: false,
+        height: getChartHeight(),
         autosize: true,
-        margin: { l: 50, r: 50, t: 10, b: 20 },
+        margin: { l: 56, r: 24, t: 16, b: 40 },
         shapes: [
             {
                 type: 'line',
@@ -155,23 +521,23 @@ function setupPlotlyChart(jsonData) {
                 yref: 'y',
                 y0: mbps,
                 y1: mbps,
-                line: { color: '#f200ff', width: 2, dash: 'dash' },
+                line: { color: '#f200ff', width: 1.5, dash: 'dot' },
             }
         ],
         annotations: [
             {
                 xref: 'paper',
                 yref: 'y',
-                x: 0,
+                x: 0.01,
                 y: mbps,
-                text: `Average Bitrate: ${mbps.toFixed(2)} Mb/s`,
+                text: `Avg ${mbps.toFixed(2)} Mb/s`,
                 showarrow: false,
-                font: { size: 12, color: '#f200ff' },
-                bgcolor: '#282828',
-                bordercolor: '#f200ff',
-                borderwidth: 1,
-                borderpad: 4,
-                opacity: 0.8,
+                xanchor: 'left',
+                yanchor: 'bottom',
+                font: { size: 11, color: '#f200ff', family: 'IBM Plex Mono, monospace' },
+                bgcolor: 'rgba(24, 28, 36, 0.75)',
+                borderpad: 3,
+                opacity: 0.95,
             }
         ]
     };
@@ -198,93 +564,121 @@ function setupPlotlyChart(jsonData) {
         chartDiv.on('plotly_click', function(data) {
             if (data.points && data.points.length > 0) {
                 const clickedTime = parseFloat(data.points[0].x);
+                if (transport.shuttleRate < 0) pausePlayback();
                 videoPlayer.currentTime = clickedTime;
+                syncPlayheadView(clickedTime, true);
             }
         });
+        chartDiv.on('plotly_relayout', function(eventData) {
+            if (syncingZoomSlider) return;
+            let range = null;
+            if (eventData['xaxis.range[0]'] !== undefined && eventData['xaxis.range[1]'] !== undefined) {
+                range = [eventData['xaxis.range[0]'], eventData['xaxis.range[1]']];
+            } else if (Array.isArray(eventData['xaxis.range'])) {
+                range = eventData['xaxis.range'];
+            } else if (eventData['xaxis.autorange']) {
+                range = [0, duration];
+            }
+            if (!range) return;
+            layout.xaxis.range = range;
+            currentZoomLevel = zoomLevelFromRange(range);
+        });
+        layout.height = getChartHeight();
+        Plotly.relayout('frameChart', { height: layout.height, autosize: true });
+        Plotly.Plots.resize(chartDiv);
     });
 
-    // --- View Switch Buttons ---
-    document.getElementById('barView').addEventListener('click', function() {
-        if (currentView !== 'bar') {
-            currentView = 'bar';
-            Plotly.react('frameChart', createTraces('bar'), layout);
-            document.getElementById('barView').classList.add('active');
-            document.getElementById('lineView').classList.remove('active');
-        }
-    });
-    document.getElementById('lineView').addEventListener('click', function() {
-        if (currentView !== 'line') {
-            currentView = 'line';
-            Plotly.react('frameChart', createTraces('line'), layout);
-            document.getElementById('lineView').classList.add('active');
-            document.getElementById('barView').classList.remove('active');
-        }
-    });
-    document.getElementById('resetZoom').addEventListener('click', function() {
-        Plotly.relayout('frameChart', {
-            'xaxis.autorange': true,
-            'yaxis.autorange': true
-        });
-    });
+    window.onresize = function() {
+        const chartDiv = document.getElementById('frameChart');
+        if (!chartDiv) return;
+        layout.height = getChartHeight();
+        Plotly.relayout('frameChart', { height: layout.height });
+        Plotly.Plots.resize(chartDiv);
+    };
 
     // --- Video/Marker Sync ---
-    videoPlayer.addEventListener('timeupdate', function() {
-        const currentTime = videoPlayer.currentTime;
-        updateCurrentFrameMarker(currentTime);
-    });
+    videoPlayer.ontimeupdate = function() {
+        if (transport.reverseRafId !== null) return;
+        syncPlayheadView(videoPlayer.currentTime, false);
+    };
+    videoPlayer.onended = function() {
+        transport.shuttleRate = 0;
+        videoPlayer.playbackRate = 1;
+    };
 
-    // --- Keyboard Frame Navigation & Zoom ---
-    document.addEventListener('keydown', function(e) {
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-        let skipToIdx = null;
-        const currentIdx = findFrameIndexByTime(videoPlayer.currentTime, jsonData.frames);
-        if (e.key === 'ArrowRight') {
-            if (currentIdx < jsonData.frames.length - 1) {
-                skipToIdx = currentIdx + 1;
-                e.preventDefault();
-            }
-        } else if (e.key === 'ArrowLeft') {
-            if (currentIdx > 0) {
-                skipToIdx = currentIdx - 1;
-                e.preventDefault();
-            }
-        } else if (e.key === '+' || e.key === '=' ) {
-            // Zoom in (halve the x-axis range)
-            const xaxis = layout.xaxis;
-            let [xmin, xmax] = [xaxis.range ? xaxis.range[0] : 0, xaxis.range ? xaxis.range[1] : duration];
-            if (!xaxis.range) {
-                xmin = 0;
-                xmax = duration;
-            }
-            const center = (xmin + xmax) / 2;
-            const halfRange = (xmax - xmin) / 4;
-            Plotly.relayout('frameChart', {'xaxis.range': [center - halfRange, center + halfRange]});
-            e.preventDefault();
-        } else if (e.key === '-') {
-            // Zoom out (double the x-axis range)
-            const xaxis = layout.xaxis;
-            let [xmin, xmax] = [xaxis.range ? xaxis.range[0] : 0, xaxis.range ? xaxis.range[1] : duration];
-            if (!xaxis.range) {
-                xmin = 0;
-                xmax = duration;
-            }
-            const center = (xmin + xmax) / 2;
-            let newMin = Math.max(0, center - (xmax - xmin));
-            let newMax = Math.min(duration, center + (xmax - xmin));
-            Plotly.relayout('frameChart', {'xaxis.range': [newMin, newMax]});
-            e.preventDefault();
+    transport.onPlay = () => {
+        if (transport.video !== videoPlayer) return;
+        if (transport.shuttleRate <= 0 && transport.reverseRafId === null) {
+            const rate = Number(videoPlayer.playbackRate) || 1;
+            transport.shuttleRate = Math.max(1, Math.min(4, Math.round(rate)));
         }
-        if (skipToIdx !== null) {
-            const targetFrame = jsonData.frames[skipToIdx];
-            const targetTime = parseFloat(targetFrame.best_effort_timestamp_time);
-            videoPlayer.pause();
-            // Only update marker after seeked
-            const onSeeked = function() {
-                updateCurrentFrameMarker(targetTime);
-                videoPlayer.removeEventListener('seeked', onSeeked);
-            };
-            videoPlayer.addEventListener('seeked', onSeeked);
-            videoPlayer.currentTime = targetTime;
+    };
+    transport.onPause = () => {
+        if (transport.video !== videoPlayer) return;
+        if (transport.suppressPauseSideEffects || transport.reverseRafId !== null) return;
+        transport.shuttleRate = 0;
+        videoPlayer.playbackRate = 1;
+    };
+    videoPlayer.addEventListener('play', transport.onPlay);
+    videoPlayer.addEventListener('pause', transport.onPause);
+
+    // --- Page-wide Keyboard Shortcuts (document capture only — never also on video) ---
+    function handleKeydown(e) {
+        // Guard against duplicate delivery if anything else re-dispatches
+        if (e._vidplotHandled || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (isVidplotTypingTarget(document.activeElement)) return;
+
+        const key = e.key;
+        const lower = key.length === 1 ? key.toLowerCase() : key;
+        const isTransport =
+            key === 'ArrowRight' || key === 'ArrowLeft'
+            || key === '>' || key === '.' || key === '<' || key === ','
+            || key === ' ' || key === 'Spacebar'
+            || lower === 'j' || lower === 'k' || lower === 'l'
+            || key === '+' || key === '=' || key === '-';
+        if (!isTransport) return;
+        // Space/K must not auto-repeat (would toggle/pause-spam); J/L and frame step may
+        if (e.repeat && (key === ' ' || key === 'Spacebar' || lower === 'k')) return;
+
+        e._vidplotHandled = true;
+        e.preventDefault();
+        e.stopPropagation();
+
+        try {
+            if (key === 'ArrowRight') {
+                if (transport.shuttleRate < 0) pausePlayback();
+                seekToTime(videoPlayer.currentTime + 1, false);
+            } else if (key === 'ArrowLeft') {
+                if (transport.shuttleRate < 0) pausePlayback();
+                seekToTime(videoPlayer.currentTime - 1, false);
+            } else if (key === '>' || key === '.') {
+                stepFrame(1);
+            } else if (key === '<' || key === ',') {
+                stepFrame(-1);
+            } else if (key === ' ' || key === 'Spacebar') {
+                togglePlayback();
+            } else if (lower === 'j') {
+                bumpShuttleBackward();
+            } else if (lower === 'k') {
+                pausePlayback();
+            } else if (lower === 'l') {
+                bumpShuttleForward();
+            } else if (key === '+' || key === '=') {
+                applyZoomLevel(currentZoomLevel * 2, videoPlayer.currentTime || getZoomCenter());
+            } else if (key === '-') {
+                applyZoomLevel(Math.max(1, Math.round(currentZoomLevel / 2)), videoPlayer.currentTime || getZoomCenter());
+            }
+        } catch (err) {
+            console.error('transport key failed:', err);
         }
-    });
+    }
+
+    transport.onKeyDown = handleKeydown;
+    document.addEventListener('keydown', handleKeydown, true);
+    // Drop legacy dual-binding if an older session left it around
+    if (window._vidplotKeyHandler) {
+        document.removeEventListener('keydown', window._vidplotKeyHandler, true);
+        videoPlayer.removeEventListener('keydown', window._vidplotKeyHandler, true);
+        window._vidplotKeyHandler = null;
+    }
 }

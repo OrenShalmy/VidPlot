@@ -4,8 +4,8 @@
 	"description": "Video Frame Analysis Tool",
 	"start_url": "/",
 	"display": "standalone",
-	"background_color": "#1e1e1e",
-	"theme_color": "#1e1e1e",
+	"background_color": "#181c24",
+	"theme_color": "#181c24",
 	"icons": [
 		{
 			"src": "/static/icons/icon-192x192.png",

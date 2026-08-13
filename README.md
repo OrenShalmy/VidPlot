@@ -1,65 +1,81 @@
-<img width="350" alt="image" src="https://github.com/user-attachments/assets/d8be2694-c833-4027-ada5-bb44eddbbee6" />
-<img width="350" alt="image" src="https://github.com/user-attachments/assets/72944ef8-e5b5-4156-ab38-47326485965f" />
+# VidPlot
 
+Local video frame analyzer for inspecting per-frame size, frame type (I/P/B), timestamps (DTS/PTS), and average QP. Drop a clip, scrub with JKL / frame-step keys, and explore the bitrate graph next to a video preview.
 
-# VidPlot2
+## Features
 
-A web-based video frame analyzer that provides visual insights into video frame types and bitrates.
+- Drag-and-drop or native file open (desktop)
+- Staged analysis: streams/properties → frame chart → QP (when available)
+- Per-frame hover: frame number, timecode, DTS, PTS, size, type, Avg QP
+- JKL shuttle, Space play/pause, `,` / `.` (or `<` / `>`) frame step, arrow keys ±1s
+- Optional desktop app via pywebview + PyInstaller
 
 ## Prerequisites
 
-1. Python 3.7 or higher
-2. FFprobe
+- Python 3.10+ recommended
+- [FFmpeg](https://ffmpeg.org/) (provides `ffprobe` and `ffmpeg` on your `PATH`)
 
-## Installation
+### Install FFmpeg
 
-### 1. Install FFmpeg
+**macOS**
 
-#### On macOS:
 ```bash
 brew install ffmpeg
 ```
 
-#### On Ubuntu/Debian:
+**Ubuntu / Debian**
+
 ```bash
 sudo apt update
 sudo apt install ffmpeg
 ```
 
-#### On Windows:
-Download from [FFmpeg website](https://ffmpeg.org/download.html) and add to system PATH
+**Windows**
 
-### 2. Setup Python Environment
+Download from the [FFmpeg site](https://ffmpeg.org/download.html) and add it to your system `PATH`.
+
+## Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/OrenShalmy/VidPlot2.git
-cd VidPlot2
+git clone https://github.com/Oren-Beamr/VidPlot.git
+cd VidPlot
 
-# Create and activate virtual environment (optional but recommended)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Running the Application
+## Run
 
-1. Start the server:
+### Desktop (recommended)
+
 ```bash
-cd VidPlot2
+python desktop.py
+```
+
+### Browser / Flask
+
+```bash
 python app.py
 ```
 
-2. Open your web browser and navigate to:
+Then open [http://localhost:5000](http://localhost:5000).
+
+## Build a desktop app
+
+```bash
+python build_desktop.py
 ```
-http://localhost:5000
-```
+
+Output lands under `dist/` (platform-specific). Paths for `ffprobe` / `ffmpeg` can also be set in the in-app Configure menu.
 
 ## Usage
 
-1. Drag and drop a video file onto the upload area or click to select a file
-2. Wait for the analysis to complete
-3. View the frame analysis and video information
-plots data-rate and frame type
+1. Open a video (drag-and-drop or file picker).
+2. Wait for properties, then the frame graph (QP fills in when supported).
+3. Hover bars for frame details; use keyboard shortcuts to scrub and shuttle.
+
+## License
+
+See repository for license details.

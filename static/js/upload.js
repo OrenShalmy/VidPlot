@@ -6,139 +6,574 @@ document.addEventListener("DOMContentLoaded", function () {
     const mediaInfo = document.getElementById("mediaInfo");
     const videoSection = document.getElementById("videoSection");
     const frameGraphSection = document.getElementById("frameGraphSection");
+    const sideMenu = document.getElementById("sideMenu");
+    const sideMenuToggle = document.getElementById("sideMenuToggle");
+    const loadNewVideoBtn = document.getElementById("loadNewVideoBtn");
+    const dropError = document.getElementById("dropError");
 
-    // Hide video and graph sections initially
+    let desktopMode = document.body?.dataset?.desktop === "1";
+    let analyzePulseTimer = null;
+    let analysisGeneration = 0;
+
     if (videoSection) videoSection.style.display = "none";
     if (frameGraphSection) frameGraphSection.style.display = "none";
 
-    // Add progress bar HTML to dropArea
-    dropArea.innerHTML += `
-        <div id="uploadProgress">
-            <div class="progress-bar"></div>
-        </div>
-    `;
-    const progressBar = document.querySelector('#uploadProgress .progress-bar');
-    const progressContainer = document.getElementById('uploadProgress');
+    function showSideMenu() {
+        if (!sideMenu) return;
+        sideMenu.classList.add("visible");
+        sideMenu.classList.add("collapsed");
+        sideMenu.setAttribute("aria-hidden", "false");
+        if (sideMenuToggle) sideMenuToggle.setAttribute("aria-expanded", "false");
+    }
 
-    // Prevent default behavior (Prevent opening the file)
-    ["dragenter", "dragover", "dragleave", "drop"].forEach(event => {
+    showSideMenu();
+
+    function setSideMenuCollapsed(collapsed) {
+        if (!sideMenu) return;
+        sideMenu.classList.toggle("collapsed", collapsed);
+        if (sideMenuToggle) sideMenuToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        // Config text fields keep focus when the drawer closes, which blocks JKL / frame keys
+        if (collapsed) {
+            const active = document.activeElement;
+            if (active && sideMenu.contains(active) && typeof active.blur === "function") {
+                active.blur();
+            }
+        }
+    }
+
+    function showWorkspace() {
+        document.body.classList.add("is-loaded");
+        // Clear any inline display from showDropZone — CSS alone cannot override it
+        if (dropArea) dropArea.style.display = "";
+        if (videoSection) videoSection.style.display = "flex";
+        if (frameGraphSection) frameGraphSection.style.display = "flex";
+        showSideMenu();
+    }
+
+    function showDropZone() {
+        document.body.classList.remove("is-loaded");
+        if (videoSection) videoSection.style.display = "none";
+        if (frameGraphSection) frameGraphSection.style.display = "none";
+        if (dropArea) dropArea.style.display = "flex";
+        showSideMenu();
+    }
+
+    function showDropError(message) {
+        if (!dropError) {
+            alert(message);
+            return;
+        }
+        dropError.textContent = message;
+        dropError.hidden = false;
+    }
+
+    function clearDropError() {
+        if (!dropError) return;
+        dropError.textContent = "";
+        dropError.hidden = true;
+    }
+
+    if (sideMenuToggle) {
+        sideMenuToggle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setSideMenuCollapsed(!sideMenu.classList.contains("collapsed"));
+        });
+    }
+
+    document.addEventListener("click", (e) => {
+        if (!sideMenu || !sideMenu.classList.contains("visible")) return;
+        if (sideMenu.classList.contains("collapsed")) return;
+        const panel = document.getElementById("sideMenuPanel");
+        const onMenu = sideMenu.contains(e.target)
+            || (sideMenuToggle && sideMenuToggle.contains(e.target))
+            || (panel && panel.contains(e.target));
+        if (!onMenu) setSideMenuCollapsed(true);
+    });
+
+    function setLoadDropStatus(title, hint, { busy = false, error = false } = {}) {
+        if (!loadNewVideoBtn) return;
+        const titleEl = loadNewVideoBtn.querySelector(".load-drop-title");
+        const hintEl = loadNewVideoBtn.querySelector(".load-drop-hint");
+        if (titleEl) titleEl.textContent = title;
+        if (hintEl) {
+            hintEl.textContent = hint;
+            hintEl.classList.toggle("is-error", !!error);
+        }
+        loadNewVideoBtn.classList.toggle("is-busy", !!busy);
+        loadNewVideoBtn.disabled = !!busy;
+    }
+
+    function resetLoadDropStatus() {
+        setLoadDropStatus("Load new video", "or drop a file here", { busy: false, error: false });
+    }
+
+    if (loadNewVideoBtn) {
+        loadNewVideoBtn.addEventListener("click", () => {
+            if (loadNewVideoBtn.disabled) return;
+            if (videoPlayer) {
+                videoPlayer.pause();
+                videoPlayer.removeAttribute("src");
+                if (videoSource) videoSource.src = "";
+                videoPlayer.load();
+            }
+            if (mediaInfo) mediaInfo.innerHTML = "";
+            if (videoUpload) videoUpload.value = "";
+            window.vidplotCurrentFilename = "";
+            clearDropError();
+            resetLoadDropStatus();
+            analysisGeneration += 1;
+            setAnalysisStatus("");
+            showDropZone();
+            resetProgress();
+        });
+    }
+
+    // Append progress without innerHTML += (that would destroy #dropError)
+    let progressContainer = document.getElementById("uploadProgress");
+    if (!progressContainer) {
+        progressContainer = document.createElement("div");
+        progressContainer.id = "uploadProgress";
+        const bar = document.createElement("div");
+        bar.className = "progress-bar";
+        progressContainer.appendChild(bar);
+        dropArea.appendChild(progressContainer);
+    }
+    const progressBar = progressContainer.querySelector(".progress-bar");
+
+    function stopAnalyzePulse() {
+        if (analyzePulseTimer) {
+            clearInterval(analyzePulseTimer);
+            analyzePulseTimer = null;
+        }
+    }
+
+    function resetProgress() {
+        stopAnalyzePulse();
+        if (progressContainer) progressContainer.style.display = "none";
+        if (progressBar) progressBar.style.width = "0%";
+        const progressLabel = document.getElementById("progressLabel");
+        if (progressLabel) progressLabel.remove();
+    }
+
+    function setProgress(labelText, percent) {
+        progressContainer.style.display = "block";
+        if (typeof percent === "number") {
+            progressBar.style.width = Math.max(0, Math.min(100, percent)) + "%";
+        }
+        let progressLabel = document.getElementById("progressLabel");
+        if (!progressLabel) {
+            progressLabel = document.createElement("div");
+            progressLabel.id = "progressLabel";
+            progressContainer.appendChild(progressLabel);
+        }
+        progressLabel.textContent = labelText;
+    }
+
+    function startAnalyzePulse() {
+        stopAnalyzePulse();
+        let pct = 20;
+        setProgress("Analyzing frames…", pct);
+        analyzePulseTimer = setInterval(() => {
+            // Indeterminate-style fill while ffprobe runs (can take a while)
+            pct = pct >= 90 ? 35 : pct + 2;
+            setProgress("Analyzing frames…", pct);
+        }, 400);
+    }
+
+    function isDesktopApp() {
+        return desktopMode || !!(window.pywebview && window.pywebview.api);
+    }
+
+    function updateDropCopy() {
+        const hint = dropArea.querySelector(".drop-hint");
+        if (isDesktopApp() && hint) {
+            hint.textContent = "Opens from its original path — no copy created";
+        }
+    }
+
+    function fileSystemPath(file) {
+        if (!file) return "";
+        return file.path || file.pywebviewFullPath || "";
+    }
+
+    fetch("/api/env")
+        .then((r) => r.json())
+        .then((env) => {
+            if (env.desktop) {
+                desktopMode = true;
+                document.body.dataset.desktop = "1";
+                updateDropCopy();
+            }
+        })
+        .catch(() => {});
+
+    function setAnalysisStatus(message) {
+        const el = document.getElementById("analysisStatus");
+        if (!el) return;
+        el.textContent = message || "";
+    }
+
+    function showFrameChartPlaceholder(message) {
+        const chart = document.getElementById("frameChart");
+        if (!chart) return;
+        chart.innerHTML = `<div class="chart-placeholder">${message || "Analyzing frames…"}</div>`;
+    }
+
+    function requestQpAnalysis(path, generation) {
+        if (!path) return;
+        setAnalysisStatus("Computing Avg QP…");
+        fetch("/api/analyze-qp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+        })
+            .then(async (res) => {
+                const data = await res.json();
+                if (generation !== analysisGeneration) return;
+                if (!res.ok) {
+                    throw new Error(data.details || data.error || "QP analysis failed");
+                }
+                if (typeof vidplotUpdateMeanQp === "function") {
+                    vidplotUpdateMeanQp(data.mean_qps || []);
+                }
+                setAnalysisStatus(data.qp_available ? "" : "Avg QP unavailable");
+                if (!data.qp_available) {
+                    setTimeout(() => {
+                        if (generation === analysisGeneration) setAnalysisStatus("");
+                    }, 4000);
+                }
+            })
+            .catch((err) => {
+                if (generation !== analysisGeneration) return;
+                console.error(err);
+                setAnalysisStatus("Avg QP failed");
+                setTimeout(() => {
+                    if (generation === analysisGeneration) setAnalysisStatus("");
+                }, 4000);
+            });
+    }
+
+    function requestFramesAnalysis(path, jsonData, generation) {
+        setAnalysisStatus("Analyzing frames…");
+        showFrameChartPlaceholder("Analyzing frames…");
+        return fetch("/api/analyze-frames", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+        })
+            .then(async (res) => {
+                const data = await res.json();
+                if (generation !== analysisGeneration) return;
+                if (!res.ok) {
+                    throw new Error(data.details || data.error || "Frame analysis failed");
+                }
+                jsonData.frames = data.frames || [];
+                jsonData.frames_pending = false;
+                jsonData.qp_pending = !!data.qp_pending;
+                window.vidplotJsonData = jsonData;
+
+                try {
+                    if (typeof updatemediaInfo === "function") {
+                        updatemediaInfo(jsonData);
+                    }
+                } catch (err) {
+                    console.error("media info refresh failed:", err);
+                }
+
+                try {
+                    if (typeof setupPlotlyChart === "function" && typeof Plotly !== "undefined") {
+                        setupPlotlyChart(jsonData);
+                    } else if (typeof Plotly === "undefined") {
+                        showFrameChartPlaceholder("Chart library failed to load");
+                    }
+                } catch (err) {
+                    console.error("chart failed:", err);
+                    showFrameChartPlaceholder(err.message || "Could not render frame chart");
+                }
+
+                if (data.qp_pending) {
+                    requestQpAnalysis(path, generation);
+                } else {
+                    setAnalysisStatus("");
+                }
+            })
+            .catch((err) => {
+                if (generation !== analysisGeneration) return;
+                console.error(err);
+                setAnalysisStatus("Frame analysis failed");
+                showFrameChartPlaceholder(err.message || "Frame analysis failed");
+            });
+    }
+
+    function presentShell(result, jsonData, generation) {
+        clearDropError();
+        resetLoadDropStatus();
+        window.vidplotCurrentFilename = result.filename || jsonData?.format?.filename || "";
+        window.vidplotJsonData = jsonData;
+        if (videoSource) videoSource.src = result.video_url;
+        if (videoPlayer) {
+            videoPlayer.style.display = "block";
+            videoPlayer.load();
+        }
+        if (mediaInfo) mediaInfo.style.display = "block";
+        showWorkspace();
+        try {
+            if (typeof updatemediaInfo === "function") {
+                updatemediaInfo(jsonData);
+            }
+        } catch (err) {
+            console.error("media info failed:", err);
+        }
+        showFrameChartPlaceholder("Analyzing frames…");
+        resetProgress();
+
+        const path = result.source_path || jsonData?.format?.source_path || "";
+        if (result.frames_pending || jsonData?.frames_pending || !(jsonData?.frames || []).length) {
+            requestFramesAnalysis(path, jsonData, generation);
+        } else if (result.qp_pending || jsonData?.qp_pending) {
+            try {
+                if (typeof setupPlotlyChart === "function" && typeof Plotly !== "undefined") {
+                    setupPlotlyChart(jsonData);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+            requestQpAnalysis(path, generation);
+        } else {
+            try {
+                if (typeof setupPlotlyChart === "function" && typeof Plotly !== "undefined") {
+                    setupPlotlyChart(jsonData);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+            setAnalysisStatus("");
+        }
+    }
+
+    async function analyzeLocalPath(path) {
+        if (!path) return;
+        const generation = ++analysisGeneration;
+        clearDropError();
+        if (videoPlayer) videoPlayer.pause();
+        setLoadDropStatus("Opening…", "Please wait", { busy: true });
+        startAnalyzePulse();
+        try {
+            const res = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.details || result.error || "Analysis failed");
+            }
+            if (generation !== analysisGeneration) return;
+            stopAnalyzePulse();
+            setProgress("Loading…", 95);
+            let jsonData = result.data;
+            if (!jsonData) {
+                const jsonRes = await fetch(result.json_url);
+                jsonData = await jsonRes.json();
+            }
+            setProgress("Ready", 100);
+            presentShell(result, jsonData, generation);
+        } catch (err) {
+            if (generation !== analysisGeneration) return;
+            console.error(err);
+            resetProgress();
+            resetLoadDropStatus();
+            showDropZone();
+            showDropError(err.message || "Analysis failed");
+        }
+    }
+
+    window.vidplotOpenPath = analyzeLocalPath;
+
+    async function waitForNativeApi(timeoutMs = 5000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (window.pywebview?.api?.open_video) return window.pywebview.api;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+        return null;
+    }
+
+    async function pickNativeVideo() {
+        clearDropError();
+        setProgress("Opening file picker…", 5);
+        try {
+            const api = await waitForNativeApi();
+            if (!api) {
+                throw new Error(
+                    "Desktop bridge not ready. Quit and relaunch VidPlot (use python desktop.py or rebuild the app)."
+                );
+            }
+            const path = await api.open_video();
+            if (!path) {
+                resetProgress();
+                return;
+            }
+            await analyzeLocalPath(path);
+        } catch (err) {
+            console.error(err);
+            resetProgress();
+            showDropError(err.message || "Could not open file picker");
+        }
+    }
+
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((event) => {
         dropArea.addEventListener(event, (e) => {
             e.preventDefault();
             e.stopPropagation();
         });
     });
 
-    // Highlight drop area when a file is dragged over
-    ["dragenter", "dragover"].forEach(event => {
+    ["dragenter", "dragover"].forEach((event) => {
         dropArea.addEventListener(event, () => dropArea.classList.add("highlight"));
     });
 
-    ["dragleave", "drop"].forEach(event => {
+    ["dragleave", "drop"].forEach((event) => {
         dropArea.addEventListener(event, () => dropArea.classList.remove("highlight"));
     });
 
-    // Handle dropped file
     dropArea.addEventListener("drop", (event) => {
         const file = event.dataTransfer.files[0];
-        if (file) handleFile(file);
+        if (!file) return;
+        const path = fileSystemPath(file);
+        if (path) {
+            analyzeLocalPath(path);
+            return;
+        }
+        if (isDesktopApp()) {
+            // Desktop paths arrive via pywebview's native drop bridge (desktop.py).
+            // Do not open the file picker — that was the old fallback and felt broken.
+            return;
+        }
+        handleUploadedFile(file);
     });
 
-    // Handle file selection via click
-    dropArea.addEventListener("click", () => videoUpload.click());
+    // Side-menu "Load new video" also accepts drops while a clip is open
+    if (loadNewVideoBtn) {
+        ["dragenter", "dragover", "dragleave", "drop"].forEach((event) => {
+            loadNewVideoBtn.addEventListener(event, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+        ["dragenter", "dragover"].forEach((event) => {
+            loadNewVideoBtn.addEventListener(event, () => {
+                if (!loadNewVideoBtn.disabled) {
+                    loadNewVideoBtn.classList.add("drag-over");
+                }
+            });
+        });
+        ["dragleave", "drop"].forEach((event) => {
+            loadNewVideoBtn.addEventListener(event, () => {
+                loadNewVideoBtn.classList.remove("drag-over");
+            });
+        });
+        loadNewVideoBtn.addEventListener("drop", (event) => {
+            if (loadNewVideoBtn.disabled) return;
+            const file = event.dataTransfer.files[0];
+            if (!file) return;
+            const path = fileSystemPath(file);
+            if (path) {
+                analyzeLocalPath(path);
+                return;
+            }
+            if (isDesktopApp()) {
+                // Path is delivered by desktop.py's native drop bridge
+                return;
+            }
+            handleUploadedFile(file);
+        });
+    }
+
+    dropArea.addEventListener("click", (e) => {
+        if (e.target.closest("#uploadProgress") || e.target.closest("#dropError")) return;
+        if (isDesktopApp()) {
+            pickNativeVideo();
+        } else {
+            videoUpload.click();
+        }
+    });
 
     videoUpload.addEventListener("change", (event) => {
+        // Hard block upload path in desktop mode
+        if (isDesktopApp()) {
+            videoUpload.value = "";
+            pickNativeVideo();
+            return;
+        }
         const file = event.target.files[0];
-        if (file) handleFile(file);
+        if (file) handleUploadedFile(file);
     });
 
-    function handleFile(file) {
+    updateDropCopy();
+    window.addEventListener("pywebviewready", () => {
+        desktopMode = true;
+        document.body.dataset.desktop = "1";
+        updateDropCopy();
+    });
+
+    function handleUploadedFile(file) {
+        // Browser-only fallback
+        if (isDesktopApp()) {
+            pickNativeVideo();
+            return;
+        }
+
+        clearDropError();
         const formData = new FormData();
         formData.append("video", file);
-        
-        // Show progress bar
-        progressContainer.style.display = 'block';
-        progressBar.style.width = '0%';
 
-        // Add progress label
-        const progressLabel = document.createElement('div');
-        progressLabel.id = 'progressLabel';
-        progressLabel.textContent = 'Uploading...';
-        progressContainer.appendChild(progressLabel);
+        setProgress("Uploading…", 5);
 
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/upload', true);
+        xhr.open("POST", "/upload", true);
 
         xhr.upload.onprogress = (event) => {
             if (event.lengthComputable) {
-                // Upload is 50% of total progress
-                const percentCompleted = Math.round((event.loaded * 25) / event.total);
-                progressBar.style.width = percentCompleted + '%';
-                progressLabel.textContent = `Uploading: ${percentCompleted}%`;
+                const percentCompleted = Math.round((event.loaded * 40) / event.total);
+                setProgress(`Uploading: ${percentCompleted}%`, percentCompleted);
             }
         };
 
-        xhr.onload = function() {
-            if (xhr.status === 200) {
+        xhr.upload.onload = function () {
+            // Upload finished; server is now running ffprobe
+            startAnalyzePulse();
+        };
+
+        xhr.onload = async function () {
+            const generation = ++analysisGeneration;
+            try {
                 const result = JSON.parse(xhr.responseText);
-                if (result.error) {
-                    alert("Upload error: " + result.error);
-                    progressContainer.style.display = 'none';
-                } else {
-                    progressBar.style.width = '75%';
-                    progressLabel.textContent = 'Processing video...';
-                    
-                    // Start polling for JSON file
-                    const pollInterval = setInterval(() => {
-                        fetch(result.json_url)
-                            .then(response => response.json())
-                            .then(jsonData => {
-                                if (jsonData.frames && jsonData.frames.length > 0) {
-                                    const lastFrame = jsonData.frames[jsonData.frames.length - 1];
-                                    const progress = Math.min(
-                                        75 + (parseFloat(lastFrame.best_effort_timestamp_time) / result.duration) * 25,
-                                        100
-                                    );
-                                    progressBar.style.width = progress + '%';
-                                    progressLabel.textContent = `Analyzing: ${Math.round(progress)}%`;
-
-                                    if (progress >= 99) {
-                                        clearInterval(pollInterval);
-                                        progressLabel.textContent = 'Complete!';
-                                        setTimeout(() => {
-                                            progressContainer.style.display = 'none';
-                                            // Update UI for new layout
-                                            dropArea.style.display = "none";
-                                            if (videoSection) videoSection.style.display = "block";
-                                            if (frameGraphSection) frameGraphSection.style.display = "block";
-                                            if (videoPlayer) videoPlayer.style.display = "block";
-                                            if (mediaInfo) mediaInfo.style.display = "block";
-                                            if (videoSource) videoSource.src = result.video_url;
-                                            if (videoPlayer) videoPlayer.load();
-
-                                            videoPlayer.addEventListener("loadedmetadata", function() {
-                                                document.querySelectorAll("th").forEach(function(th) {
-                                                    th.style.display = "table-cell";
-                                                });
-                                            });
-
-                                            updatemediaInfo(jsonData);
-                                            setupPlotlyChart(jsonData);
-                                        }, 1000);
-                                    }
-                                }
-                            })
-                            .catch(() => {}); // Ignore errors during polling
-                    }, 500);
+                if (xhr.status !== 200 || result.error) {
+                    throw new Error(result.details || result.error || "Upload failed");
                 }
+                stopAnalyzePulse();
+                setProgress("Loading…", 95);
+                let jsonData = result.data;
+                if (!jsonData) {
+                    const jsonRes = await fetch(result.json_url);
+                    jsonData = await jsonRes.json();
+                }
+                setProgress("Ready", 100);
+                presentShell(result, jsonData, generation);
+            } catch (err) {
+                console.error(err);
+                resetProgress();
+                showDropError(err.message || "Upload failed");
             }
         };
 
-        xhr.onerror = function() {
+        xhr.onerror = function () {
             console.error("Upload error:", xhr.statusText);
-            progressContainer.style.display = 'none';
+            resetProgress();
+            showDropError("Upload failed");
         };
 
         xhr.send(formData);
     }
-
 });
