@@ -50,7 +50,7 @@ function buildFrameCustomdata(frames, fps) {
             ? pts
             : parseFloat(f.best_effort_timestamp_time);
         return [
-            i + 1,
+            i,
             total,
             formatFrameTimecode(tcBase, rate),
             formatSecondsLabel(f.pkt_dts_time),

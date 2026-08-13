@@ -64,7 +64,14 @@
   </section>
 
   <section id="frameGraphSection">
-    <div id="frameChart"></div>
+    <div id="frameChartWrap">
+      <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">
+        <span class="frame-type-item"><span class="frame-type-swatch i" aria-hidden="true"></span>I</span>
+        <span class="frame-type-item"><span class="frame-type-swatch p" aria-hidden="true"></span>P</span>
+        <span class="frame-type-item"><span class="frame-type-swatch b" aria-hidden="true"></span>B</span>
+      </div>
+      <div id="frameChart"></div>
+    </div>
     <div id="plotControls">
       <div id="playerControls">
         <button type="button" id="playPauseBtn" title="Play/Pause" aria-label="Play/Pause">

@@ -580,6 +580,15 @@ body.is-loaded #dropArea {
   overflow: hidden;
 }
 
+#frameChartWrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 #frameChart {
   flex: 1 1 auto;
   width: 100% !important;
@@ -587,6 +596,50 @@ body.is-loaded #dropArea {
   background: var(--bg);
   cursor: pointer;
   overflow: hidden;
+}
+
+.frame-type-legend {
+  position: absolute;
+  top: 10px;
+  left: 56px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(24, 28, 36, 0.78);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.frame-type-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.frame-type-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.frame-type-swatch.i {
+  background: #0161ff;
+}
+
+.frame-type-swatch.p {
+  background: #70a6ff;
+}
+
+.frame-type-swatch.b {
+  background: rgba(224, 224, 224, 0.85);
 }
 
 #plotControls {
