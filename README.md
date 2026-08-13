@@ -66,11 +66,31 @@ Then open [http://localhost:5000](http://localhost:5000).
 
 ## Build a desktop app
 
+### Locally
+
 ```bash
 python build_desktop.py
 ```
 
 Output lands under `dist/` (platform-specific). Paths for `ffprobe` / `ffmpeg` can also be set in the in-app Configure menu.
+
+### CI (macOS + Windows)
+
+GitHub Actions builds desktop zips on both runners — no local Windows machine required.
+
+- **Tag a release** (builds both platforms and attaches assets):
+
+  ```bash
+  git tag v1.0.1
+  git push origin v1.0.1
+  ```
+
+- **Manual run:** Actions → **Build desktop** → Run workflow  
+  Optionally check “Upload build zips to a GitHub Release” and set a tag like `v1.0.1`.
+
+Artifacts:
+- `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
+- `VidPlot-Windows-x64.zip` — folder with `VidPlot.exe` (needs [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) on the PC; usually already present on Windows 10/11)
 
 ## Usage
 
