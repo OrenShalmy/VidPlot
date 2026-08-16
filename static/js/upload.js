@@ -120,22 +120,30 @@ document.addEventListener("DOMContentLoaded", function () {
     if (loadNewVideoBtn) {
         loadNewVideoBtn.addEventListener("click", () => {
             if (loadNewVideoBtn.disabled) return;
-            if (videoPlayer) {
-                videoPlayer.pause();
-                videoPlayer.removeAttribute("src");
-                if (videoSource) videoSource.src = "";
-                videoPlayer.load();
-            }
-            if (mediaInfo) mediaInfo.innerHTML = "";
-            if (videoUpload) videoUpload.value = "";
-            window.vidplotCurrentFilename = "";
-            clearDropError();
-            resetLoadDropStatus();
-            analysisGeneration += 1;
-            setAnalysisStatus("");
-            showDropZone();
-            resetProgress();
+            resetWorkspaceToDrop({ cancelAnalysis: true });
         });
+    }
+
+    function resetWorkspaceToDrop({ cancelAnalysis = false } = {}) {
+        if (videoPlayer) {
+            videoPlayer.pause();
+            videoPlayer.removeAttribute("src");
+            if (videoSource) videoSource.src = "";
+            videoPlayer.load();
+        }
+        if (mediaInfo) mediaInfo.innerHTML = "";
+        const streamTree = document.getElementById("streamTree");
+        if (streamTree) streamTree.innerHTML = "";
+        if (videoUpload) videoUpload.value = "";
+        window.vidplotCurrentFilename = "";
+        window.vidplotJsonData = null;
+        clearDropError();
+        resetLoadDropStatus();
+        if (cancelAnalysis) analysisGeneration += 1;
+        setAnalysisStatus("");
+        showFrameChartPlaceholder("");
+        showDropZone();
+        resetProgress();
     }
 
     // Append progress without innerHTML += (that would destroy #dropError)
@@ -197,7 +205,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function updateDropCopy() {
         const hint = dropArea.querySelector(".drop-hint");
         if (isDesktopApp() && hint) {
-            hint.textContent = "Opens from its original path — no copy created";
+            hint.textContent = "Local path or HTTP(S) URL — no copy created";
         }
     }
 
