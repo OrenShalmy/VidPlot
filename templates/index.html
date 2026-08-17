@@ -80,6 +80,14 @@
           <span class="scope-switch-name" title="Chrominance plot (U vs V). Check color balance, saturation, and skin-tone alignment.">Vectorscope</span>
           <button type="button" class="scope-toggle" data-scope="vectorscope" role="switch" aria-checked="false" aria-label="Toggle vectorscope"></button>
         </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Overlay motion vectors (P/B forward and B backward) via FFmpeg codecview. Works on codecs that export MVs (e.g. H.264); I-frames and many non-MPEG codecs show no arrows.">Motion vectors</span>
+          <button type="button" class="scope-toggle" data-scope="motion" role="switch" aria-checked="false" aria-label="Toggle motion vectors"></button>
+        </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Overlay block partitioning via FFmpeg codecview=block (needs -export_side_data +venc_params). Supported for H.264 and VP9. Draws partition boxes on the luma plane.">Blocks</span>
+          <button type="button" class="scope-toggle" data-scope="blocks" role="switch" aria-checked="false" aria-label="Toggle block partitions"></button>
+        </div>
       </div>
     </div>
     <aside id="streamTree" aria-label="Tracks"></aside>

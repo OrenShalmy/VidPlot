@@ -543,7 +543,16 @@ def ffmpeg_input_args(source):
 
 
 # QCTools playback-filter defaults (see bavc/qctools filter graph dump)
-SCOPE_ORDER = ('oscilloscope', 'waveform', 'histogram', 'vectorscope')
+# plus FFmpeg codecview for motion vectors / block partitions:
+# https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
+SCOPE_ORDER = (
+    'oscilloscope',
+    'waveform',
+    'histogram',
+    'vectorscope',
+    'motion',
+    'blocks',
+)
 SCOPE_FILTER_CHAINS = {
     'oscilloscope': (
         'oscilloscope=x=500000/1000000:y=500000/1000000:'
@@ -562,14 +571,22 @@ SCOPE_FILTER_CHAINS = {
         'graticule=green:flags=name,'
         'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
     ),
+    # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
+    'motion': 'codecview=mv=pf+bf+bb',
+    # Requires -export_side_data +venc_params (H.264/VP9); draws partition boxes
+    'blocks': 'codecview=block=1',
 }
+
+# Filters that must run on decoder-native frames (side data is resolution-tied)
+SCOPE_NATIVE_FRAME = frozenset({'motion', 'blocks'})
 
 
 def build_scope_filter_complex(filters, preview_width=960):
     """Build a QCTools-style ffmpeg -filter_complex mosaic for selected analyzers.
 
-    Filter strings match QCTools. Each tile is padded to a shared 16:9 canvas so
-    histogram / vectorscope fill the player width instead of staying narrow.
+    Filter strings match QCTools (plus codecview for motion/blocks). Each tile is
+    scaled to a shared 16:9 canvas. Motion-vector tiles skip the early scale so
+    codecview arrows stay aligned with the decoded frame.
     """
     selected = {f for f in filters if f in SCOPE_FILTER_CHAINS}
     names = [name for name in SCOPE_ORDER if name in selected]
@@ -582,11 +599,16 @@ def build_scope_filter_complex(filters, preview_width=960):
     # Stretch to the canvas (same idea as QCTools scale2ref). Using
     # force_original_aspect_ratio=decrease left histogram as a thin column.
     fit = f'scale={width}:{height}'
+    needs_native = bool(selected & SCOPE_NATIVE_FRAME)
 
     parts = ['sws_flags=neighbor']
-    parts.append(f'[0:v]scale={width}:-2[base]')
     split_outs = ''.join(f'[x{i}]' for i in range(1, n + 1))
-    parts.append(f'[base]split={n}{split_outs}')
+    if needs_native:
+        # Keep decoder frame size so exported MVs match the picture
+        parts.append(f'[0:v]split={n}{split_outs}')
+    else:
+        parts.append(f'[0:v]scale={width}:-2[base]')
+        parts.append(f'[base]split={n}{split_outs}')
 
     for i, name in enumerate(names, start=1):
         parts.append(f'[x{i}]{SCOPE_FILTER_CHAINS[name]},{fit}[y{i}]')
@@ -616,13 +638,34 @@ def render_scope_jpeg(video_path, time_sec, filters):
     except (TypeError, ValueError):
         t = 0.0
 
+    used_set = set(used)
+    needs_native = bool(used_set & SCOPE_NATIVE_FRAME)
+    needs_mvs = 'motion' in used_set
+    needs_venc = 'blocks' in used_set
     cmd = [
         ffmpeg_bin,
         '-hide_banner',
         '-loglevel', 'error',
-        '-ss', f'{t:.3f}',
-        *ffmpeg_input_args(video_path),
-        '-i', video_path,
+    ]
+    # Motion arrows need exported MVs; block boxes need VIDEO_ENC_PARAMS (H.264/VP9)
+    if needs_mvs:
+        cmd.extend(['-flags2', '+export_mvs'])
+    if needs_venc:
+        cmd.extend(['-export_side_data', '+venc_params'])
+    # Seek after open when side-data filters are active so the decoder can export them
+    if needs_native:
+        cmd.extend([
+            *ffmpeg_input_args(video_path),
+            '-i', video_path,
+            '-ss', f'{t:.3f}',
+        ])
+    else:
+        cmd.extend([
+            '-ss', f'{t:.3f}',
+            *ffmpeg_input_args(video_path),
+            '-i', video_path,
+        ])
+    cmd.extend([
         '-an',
         '-filter_complex', filter_complex,
         '-map', '[out]',
@@ -631,7 +674,7 @@ def render_scope_jpeg(video_path, time_sec, filters):
         '-vcodec', 'mjpeg',
         '-q:v', '3',
         'pipe:1',
-    ]
+    ])
     proc = subprocess.run(cmd, capture_output=True)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
