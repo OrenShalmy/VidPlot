@@ -30,6 +30,9 @@ jobs:
           - os: windows-latest
             artifact: VidPlot-Windows-x64
             kind: win
+          - os: windows-11-arm
+            artifact: VidPlot-Windows-arm64
+            kind: win
 
     runs-on: ${{ matrix.os }}
 
@@ -115,6 +118,7 @@ jobs:
           files: |
             artifacts/VidPlot-macOS-arm64.zip
             artifacts/VidPlot-Windows-x64.zip
+            artifacts/VidPlot-Windows-arm64.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

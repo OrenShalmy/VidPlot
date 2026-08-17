@@ -76,9 +76,9 @@ Output lands under `dist/` (platform-specific). Paths for `ffprobe` / `ffmpeg` c
 
 ### CI (macOS + Windows)
 
-GitHub Actions builds desktop zips on both runners — no local Windows machine required.
+GitHub Actions builds desktop zips on macOS and Windows runners — no local Windows machine required.
 
-- **Tag a release** (builds both platforms and attaches assets):
+- **Tag a release** (builds all platforms and attaches assets):
 
   ```bash
   git tag v1.0.1
@@ -90,7 +90,8 @@ GitHub Actions builds desktop zips on both runners — no local Windows machine 
 
 Artifacts:
 - `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
-- `VidPlot-Windows-x64.zip` — folder with `VidPlot.exe` (needs [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) on the PC; usually already present on Windows 10/11)
+- `VidPlot-Windows-x64.zip` — Intel/AMD64 folder with `VidPlot.exe` (needs [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) on the PC; usually already present on Windows 10/11)
+- `VidPlot-Windows-arm64.zip` — Windows on ARM folder with `VidPlot.exe` (same WebView2 requirement)
 
 ## Usage
 
