@@ -14,6 +14,7 @@
   <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/player.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/scopes.js') }}"></script>
   <script src="{{ url_for('static', filename='js/plotly.js') }}"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <script>
@@ -54,10 +55,32 @@
 <main id="workspace">
   <section id="videoSection">
     <div id="videoWrap">
-      <video id="videoPlayer">
-        <source id="videoSource" src="" type="video/mp4">
-        Your browser does not support the video tag.
-      </video>
+      <div id="videoStage">
+        <video id="videoPlayer">
+          <source id="videoSource" src="" type="video/mp4">
+          Your browser does not support the video tag.
+        </video>
+        <img id="scopePreview" alt="" hidden>
+        <div id="scopeStatus" class="scope-status" hidden></div>
+      </div>
+      <div id="scopeToggles" class="scope-toggles" role="toolbar" aria-label="Video analyzers">
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="2D trace of levels along a line in the frame. Useful for spotting luma/chroma swings and timing issues.">Oscilloscope</span>
+          <button type="button" class="scope-toggle" data-scope="oscilloscope" role="switch" aria-checked="false" aria-label="Toggle oscilloscope"></button>
+        </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Pixel levels across each column (luma by default). Check exposure, crushed blacks, and clipped highlights.">Waveform</span>
+          <button type="button" class="scope-toggle" data-scope="waveform" role="switch" aria-checked="false" aria-label="Toggle waveform"></button>
+        </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Distribution of Y, U, and V values. See whether the signal uses full range or sits legal/narrow.">Histogram</span>
+          <button type="button" class="scope-toggle" data-scope="histogram" role="switch" aria-checked="false" aria-label="Toggle histogram"></button>
+        </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Chrominance plot (U vs V). Check color balance, saturation, and skin-tone alignment.">Vectorscope</span>
+          <button type="button" class="scope-toggle" data-scope="vectorscope" role="switch" aria-checked="false" aria-label="Toggle vectorscope"></button>
+        </div>
+      </div>
     </div>
     <aside id="streamTree" aria-label="Tracks"></aside>
     <aside id="mediaInfo" class="media-info-overlay"></aside>
@@ -78,7 +101,15 @@
           <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
         </button>
-        <span id="playerTime">0:00 / 0:00</span>
+        <div class="player-time-wrap">
+          <select id="timeDisplayMode" class="time-display-mode" aria-label="Time display format" title="Time display format">
+            <option value="seconds">Seconds</option>
+            <option value="timecode">Timecode</option>
+            <option value="timestamp">Timestamp</option>
+            <option value="frames">Frames</option>
+          </select>
+          <span id="playerTime">0:00 / 0:00</span>
+        </div>
         <input type="range" id="seekBar" min="0" max="0" value="0" step="0.001" aria-label="Seek">
         <span id="analysisStatus" class="analysis-status" aria-live="polite"></span>
       </div>

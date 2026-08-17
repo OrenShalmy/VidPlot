@@ -242,7 +242,7 @@ body.is-loaded #dropArea {
   flex-direction: row;
   align-items: stretch;
   width: 100%;
-  max-height: 52vh;
+  max-height: 60vh;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
   overflow: hidden;
@@ -250,9 +250,9 @@ body.is-loaded #dropArea {
 
 #videoWrap {
   position: relative;
-  flex: 0 1 46%;
-  min-width: 280px;
-  max-width: 56%;
+  flex: 0 1 50%;
+  min-width: 300px;
+  max-width: 58%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -262,11 +262,22 @@ body.is-loaded #dropArea {
   border-right: 1px solid var(--border);
 }
 
+#videoStage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-deep);
+  overflow: hidden;
+}
+
 #videoPlayer {
   width: auto;
   max-width: 100%;
   height: 100%;
-  max-height: 52vh;
+  max-height: calc(60vh - 40px);
   object-fit: contain;
   background: var(--bg-deep);
   display: block;
@@ -274,6 +285,128 @@ body.is-loaded #dropArea {
   flex: 1 1 auto;
   min-height: 0;
   cursor: pointer;
+}
+
+#videoStage.has-scopes #videoPlayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+#scopePreview {
+  display: none;
+  max-width: 100%;
+  max-height: calc(60vh - 40px);
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  background: #000;
+}
+
+#videoStage.has-scopes #scopePreview:not([hidden]) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: calc(60vh - 40px);
+  object-fit: contain;
+}
+
+.scope-toggles {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.scope-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scope-switch-name {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  cursor: help;
+  user-select: none;
+}
+
+.scope-toggle {
+  appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.scope-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease;
+}
+
+.scope-toggle:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.scope-toggle.is-active,
+.scope-toggle[aria-checked="true"] {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.scope-toggle.is-active::after,
+.scope-toggle[aria-checked="true"]::after {
+  transform: translateX(18px);
+}
+
+.scope-toggle.is-active + .scope-switch-name,
+.scope-switch:has(.scope-toggle.is-active) .scope-switch-name,
+.scope-switch:has(.scope-toggle[aria-checked="true"]) .scope-switch-name {
+  color: var(--text);
+}
+
+.scope-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  padding: 4px 8px;
+  border-radius: 2px;
+  background: rgba(12, 14, 20, 0.78);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  pointer-events: none;
+}
+
+.scope-status.is-error {
+  color: #ffb4b4;
 }
 
 /* Session progress bar under the frame graph */
@@ -320,13 +453,47 @@ body.is-loaded #dropArea {
   display: block;
 }
 
+.player-time-wrap {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.time-display-mode {
+  appearance: none;
+  max-width: 7.5em;
+  padding: 2px 18px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%) calc(100% - 10px) / 4px 4px no-repeat,
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%) calc(100% - 6px) / 4px 4px no-repeat,
+    var(--bg-raised, var(--bg));
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.time-display-mode:hover,
+.time-display-mode:focus {
+  color: var(--text);
+  border-color: var(--border-strong);
+  outline: none;
+}
+
 #playerTime {
   flex-shrink: 0;
-  min-width: 7.5em;
+  min-width: 11em;
   font-family: var(--mono);
   font-size: 0.72rem;
   color: var(--text-muted);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .analysis-status {
@@ -475,6 +642,16 @@ body.is-loaded #dropArea {
   word-break: break-word;
 }
 
+.tree-node-title.tree-node-path {
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  font-weight: 400;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  max-width: 100%;
+}
+
 .tree-node-meta {
   font-size: 0.72rem;
   font-family: var(--mono);
@@ -583,7 +760,7 @@ body.is-loaded #dropArea {
 #frameChartWrap {
   position: relative;
   flex: 1 1 auto;
-  min-height: 140px;
+  min-height: 110px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -592,7 +769,7 @@ body.is-loaded #dropArea {
 #frameChart {
   flex: 1 1 auto;
   width: 100% !important;
-  min-height: 140px;
+  min-height: 110px;
   background: var(--bg);
   cursor: pointer;
   overflow: hidden;
@@ -980,7 +1157,11 @@ body.is-loaded #dropArea {
   }
 
   #videoPlayer {
-    max-height: 42vh;
+    max-height: calc(42vh - 40px);
+  }
+
+  #scopePreview {
+    max-height: calc(42vh - 40px);
   }
 
   #streamTree {

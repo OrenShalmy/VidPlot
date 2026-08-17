@@ -8,6 +8,7 @@ function updatemediaInfo(jsonData) {
   const filename = window.vidplotCurrentFilename
     || jsonData?.format?.filename
     || 'Unknown File';
+  const displayPath = jsonData?.format?.source_path || filename;
 
   function detectGOP(frames) {
     const iFrameIndices = (frames || [])
@@ -222,13 +223,11 @@ function updatemediaInfo(jsonData) {
 
   function renderFormatProperties() {
     const format = jsonData.format || {};
-    const shortName = filename.length > 28 ? `${filename.slice(0, 26)}…` : filename;
     mediaInfo.innerHTML = `
       <div class="info-section">
         <h3>Properties</h3>
         <div class="info-subtitle">Container</div>
-        ${row('File', shortName)}
-        ${row(format.is_remote ? 'URL' : 'Path', format.source_path)}
+        ${row(format.is_remote ? 'URL' : 'Path', displayPath)}
         ${row('Format', format.format_long_name || format.format_name)}
         ${row('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
         ${row('Duration', formatDuration(format.duration))}
@@ -329,7 +328,6 @@ function updatemediaInfo(jsonData) {
 
   function renderTree() {
     const groups = groupStreams(jsonData.streams);
-    const shortName = filename.length > 34 ? `${filename.slice(0, 32)}…` : filename;
 
     const groupHtml = groups.map((group) => {
       const leaves = group.items.map(({ stream, index }, typeIndex) => `
@@ -347,8 +345,8 @@ function updatemediaInfo(jsonData) {
 
     streamTree.innerHTML = `
       <div class="tree-header">Tracks</div>
-      <button type="button" class="tree-node" data-kind="format">
-        <span class="tree-node-title">${escapeHtml(shortName)}</span>
+      <button type="button" class="tree-node" data-kind="format" title="${escapeHtml(displayPath)}">
+        <span class="tree-node-title tree-node-path">${escapeHtml(displayPath)}</span>
         <span class="tree-node-meta">Container</span>
       </button>
       ${groupHtml || '<div class="tree-empty">No streams found</div>'}

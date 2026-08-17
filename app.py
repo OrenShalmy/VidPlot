@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import json
 from urllib.parse import urlparse, unquote
-from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect
+from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect, Response
 from werkzeug.utils import secure_filename
 
 ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265', 'ts', 'm4v', 'mkv', 'avi'}
@@ -537,6 +537,108 @@ def analyze_frames_for_path(video_path):
     }
 
 
+def ffmpeg_input_args(source):
+    """Extra ffmpeg flags for network inputs (same idea as ffprobe)."""
+    return ffprobe_input_args(source)
+
+
+# QCTools playback-filter defaults (see bavc/qctools filter graph dump)
+SCOPE_ORDER = ('oscilloscope', 'waveform', 'histogram', 'vectorscope')
+SCOPE_FILTER_CHAINS = {
+    'oscilloscope': (
+        'oscilloscope=x=500000/1000000:y=500000/1000000:'
+        's=500000/1000000:t=500000/1000000'
+    ),
+    'waveform': (
+        'format=yuv420p,waveform=intensity=0.1:mode=column:mirror=1:c=1:f=0:'
+        'graticule=green:flags=numbers+dots:scale=0'
+    ),
+    'histogram': (
+        'format=yuv420p,histogram=colors_mode=coloronwhite:'
+        'level_height=720:levels_mode=linear'
+    ),
+    'vectorscope': (
+        'format=yuv420p,vectorscope=i=0.1:mode=3:envelope=0:colorspace=1:'
+        'graticule=green:flags=name,'
+        'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
+    ),
+}
+
+
+def build_scope_filter_complex(filters, preview_width=960):
+    """Build a QCTools-style ffmpeg -filter_complex mosaic for selected analyzers.
+
+    Filter strings match QCTools. Each tile is padded to a shared 16:9 canvas so
+    histogram / vectorscope fill the player width instead of staying narrow.
+    """
+    selected = {f for f in filters if f in SCOPE_FILTER_CHAINS}
+    names = [name for name in SCOPE_ORDER if name in selected]
+    if not names:
+        raise ValueError('No valid scope filters selected')
+
+    n = len(names)
+    width = max(320, int(preview_width or 960))
+    height = max(180, int(round(width * 9 / 16)))
+    # Stretch to the canvas (same idea as QCTools scale2ref). Using
+    # force_original_aspect_ratio=decrease left histogram as a thin column.
+    fit = f'scale={width}:{height}'
+
+    parts = ['sws_flags=neighbor']
+    parts.append(f'[0:v]scale={width}:-2[base]')
+    split_outs = ''.join(f'[x{i}]' for i in range(1, n + 1))
+    parts.append(f'[base]split={n}{split_outs}')
+
+    for i, name in enumerate(names, start=1):
+        parts.append(f'[x{i}]{SCOPE_FILTER_CHAINS[name]},{fit}[y{i}]')
+
+    stack_inputs = ''.join(f'[y{i}]' for i in range(1, n + 1))
+    if n == 1:
+        parts.append(f'{stack_inputs}format=rgb24[out]')
+    else:
+        layout = '0_0|w0_0|0_h0|w0_h0|0_h0+h1|w0_h0+h1'
+        parts.append(
+            f'{stack_inputs}xstack=fill=slategray:inputs={n}:layout={layout},'
+            f'format=rgb24[out]'
+        )
+
+    return ';'.join(parts), names
+
+
+def render_scope_jpeg(video_path, time_sec, filters):
+    """Seek to time_sec and render selected FFmpeg scope filters as one JPEG."""
+    video_path = validate_video_path(video_path)
+    config = load_config()
+    ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
+    filter_complex, used = build_scope_filter_complex(filters)
+
+    try:
+        t = max(0.0, float(time_sec))
+    except (TypeError, ValueError):
+        t = 0.0
+
+    cmd = [
+        ffmpeg_bin,
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-ss', f'{t:.3f}',
+        *ffmpeg_input_args(video_path),
+        '-i', video_path,
+        '-an',
+        '-filter_complex', filter_complex,
+        '-map', '[out]',
+        '-frames:v', '1',
+        '-f', 'image2pipe',
+        '-vcodec', 'mjpeg',
+        '-q:v', '3',
+        'pipe:1',
+    ]
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0 or not proc.stdout:
+        err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
+        raise ValueError(err or 'Scope preview failed')
+    return proc.stdout, used
+
+
 def analyze_qp_for_path(video_path):
     """Run ffmpeg QP pass and merge mean_qp into the saved analysis JSON."""
     video_path = validate_video_path(video_path)
@@ -706,6 +808,29 @@ def analyze_qp_route():
     except subprocess.CalledProcessError as e:
         details = friendly_ffprobe_error(e.stderr if e.stderr else str(e))
         return jsonify({'error': 'QP analysis failed', 'details': details}), 500
+
+
+@app.route('/api/scopes', methods=['POST'])
+def scopes_preview_route():
+    """Render oscilloscope / waveform / histogram / vectorscope at a timestamp."""
+    data = request.get_json(silent=True) or {}
+    path = data.get('path') or current_source_path
+    filters = data.get('filters') or []
+    if isinstance(filters, str):
+        filters = [filters]
+    time_sec = data.get('time', 0)
+    try:
+        jpeg, used = render_scope_jpeg(path, time_sec, filters)
+        response = Response(jpeg, mimetype='image/jpeg')
+        response.headers['X-VidPlot-Scopes'] = ','.join(used)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 400
+    except ValueError as e:
+        return jsonify({'error': str(e), 'details': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': 'Scope preview failed', 'details': str(e)}), 500
 
 
 @app.route('/upload', methods=['POST'])

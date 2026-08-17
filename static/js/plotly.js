@@ -85,6 +85,7 @@ function getVidplotTransport() {
         reverseRafId: null,
         shuttleRate: 0,
         suppressPauseSideEffects: false,
+        mediaNeedsWake: false,
         onPlay: null,
         onPause: null,
         onKeyDown: null,
@@ -113,6 +114,7 @@ function getVidplotTransport() {
         },
     };
     window._vidplotTransport = t;
+    ensureVidplotFocusGuards(t);
     return t;
 }
 
@@ -138,6 +140,37 @@ function isVidplotTypingTarget(el) {
             || type === '' || type === 'tel';
     }
     return !!el.isContentEditable;
+}
+
+function releaseVidplotShortcutFocus() {
+    const el = document.activeElement;
+    if (!el || el === document.body || el === document.documentElement) return;
+    // Range / Plotly / config fields steal arrow and frame-step keys after OS focus returns
+    if (
+        isVidplotTypingTarget(el)
+        || el.id === 'seekBar'
+        || (el.closest && (el.closest('#frameChart') || el.closest('.js-plotly-plot')))
+    ) {
+        el.blur();
+    }
+}
+
+function ensureVidplotFocusGuards(transport) {
+    if (window._vidplotFocusGuardsBound) return;
+    window._vidplotFocusGuardsBound = true;
+    const markMediaWake = () => {
+        transport.mediaNeedsWake = true;
+    };
+    const onAppActive = () => {
+        transport.mediaNeedsWake = true;
+        releaseVidplotShortcutFocus();
+    };
+    window.addEventListener('blur', markMediaWake);
+    window.addEventListener('focus', onAppActive);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') markMediaWake();
+        else onAppActive();
+    });
 }
 
 function setupPlotlyChart(jsonData) {
@@ -251,23 +284,59 @@ function setupPlotlyChart(jsonData) {
         syncPlayheadView(currentTime, false);
     }
     let seekGeneration = 0;
-    function seekToTime(time, pauseAfter) {
-        const clamped = Math.max(0, Math.min(duration, time));
-        if (pauseAfter) {
-            transport.suppressPauseSideEffects = true;
+
+    function wakeMediaForSeek() {
+        if (!transport.mediaNeedsWake || !videoPlayer.paused) {
+            transport.mediaNeedsWake = false;
+            return Promise.resolve();
+        }
+        transport.mediaNeedsWake = false;
+        // WKWebView often ignores currentTime after app background until play() runs
+        transport.suppressPauseSideEffects = true;
+        const playAttempt = videoPlayer.play();
+        const settle = () => {
             videoPlayer.pause();
             transport.suppressPauseSideEffects = false;
-        }
-        const token = ++seekGeneration;
-        const onSeeked = function() {
-            videoPlayer.removeEventListener('seeked', onSeeked);
-            if (token !== seekGeneration) return;
-            updateCurrentFrameMarker(clamped);
         };
-        videoPlayer.addEventListener('seeked', onSeeked);
-        videoPlayer.currentTime = clamped;
-        // Some engines skip 'seeked' for tiny moves — keep marker honest
-        updateCurrentFrameMarker(clamped);
+        if (playAttempt && typeof playAttempt.then === 'function') {
+            return playAttempt.then(settle).catch(settle);
+        }
+        settle();
+        return Promise.resolve();
+    }
+
+    function seekToTime(time, pauseAfter) {
+        const clamped = Math.max(0, Math.min(duration, time));
+        const token = ++seekGeneration;
+        const applySeek = () => {
+            if (token !== seekGeneration) return;
+            if (pauseAfter) {
+                transport.suppressPauseSideEffects = true;
+                videoPlayer.pause();
+                transport.suppressPauseSideEffects = false;
+            }
+            const onSeeked = function() {
+                videoPlayer.removeEventListener('seeked', onSeeked);
+                if (token !== seekGeneration) return;
+                updateCurrentFrameMarker(clamped);
+            };
+            videoPlayer.addEventListener('seeked', onSeeked);
+            videoPlayer.currentTime = clamped;
+            // Some engines skip 'seeked' for tiny moves — keep marker honest
+            updateCurrentFrameMarker(clamped);
+            // If the seek was ignored (common after OS focus return), nudge once more
+            requestAnimationFrame(() => {
+                if (token !== seekGeneration) return;
+                if (Math.abs((videoPlayer.currentTime || 0) - clamped) <= 0.08) return;
+                transport.mediaNeedsWake = true;
+                wakeMediaForSeek().then(() => {
+                    if (token !== seekGeneration) return;
+                    videoPlayer.currentTime = clamped;
+                    updateCurrentFrameMarker(clamped);
+                });
+            });
+        };
+        wakeMediaForSeek().then(applySeek);
     }
     function stepFrame(delta) {
         if (!jsonData.frames || jsonData.frames.length === 0) return;
@@ -629,33 +698,43 @@ function setupPlotlyChart(jsonData) {
         if (isVidplotTypingTarget(document.activeElement)) return;
 
         const key = e.key;
+        const code = e.code || '';
         const lower = key.length === 1 ? key.toLowerCase() : key;
+        const isArrowRight = key === 'ArrowRight' || code === 'ArrowRight';
+        const isArrowLeft = key === 'ArrowLeft' || code === 'ArrowLeft';
+        const isFrameForward = key === '>' || key === '.' || code === 'Period';
+        const isFrameBack = key === '<' || key === ',' || code === 'Comma';
         const isTransport =
-            key === 'ArrowRight' || key === 'ArrowLeft'
-            || key === '>' || key === '.' || key === '<' || key === ','
-            || key === ' ' || key === 'Spacebar'
+            isArrowRight || isArrowLeft
+            || isFrameForward || isFrameBack
+            || key === ' ' || key === 'Spacebar' || code === 'Space'
             || lower === 'j' || lower === 'k' || lower === 'l'
             || key === '+' || key === '=' || key === '-';
         if (!isTransport) return;
         // Space/K must not auto-repeat (would toggle/pause-spam); J/L and frame step may
-        if (e.repeat && (key === ' ' || key === 'Spacebar' || lower === 'k')) return;
+        if (e.repeat && (key === ' ' || key === 'Spacebar' || code === 'Space' || lower === 'k')) return;
 
         e._vidplotHandled = true;
         e.preventDefault();
         e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        // Seek/frame keys are often swallowed by focused range/Plotly after OS focus return
+        if (isArrowRight || isArrowLeft || isFrameForward || isFrameBack) {
+            releaseVidplotShortcutFocus();
+        }
 
         try {
-            if (key === 'ArrowRight') {
+            if (isArrowRight) {
                 if (transport.shuttleRate < 0) pausePlayback();
                 seekToTime(videoPlayer.currentTime + 1, false);
-            } else if (key === 'ArrowLeft') {
+            } else if (isArrowLeft) {
                 if (transport.shuttleRate < 0) pausePlayback();
                 seekToTime(videoPlayer.currentTime - 1, false);
-            } else if (key === '>' || key === '.') {
+            } else if (isFrameForward) {
                 stepFrame(1);
-            } else if (key === '<' || key === ',') {
+            } else if (isFrameBack) {
                 stepFrame(-1);
-            } else if (key === ' ' || key === 'Spacebar') {
+            } else if (key === ' ' || key === 'Spacebar' || code === 'Space') {
                 togglePlayback();
             } else if (lower === 'j') {
                 bumpShuttleBackward();
@@ -675,6 +754,7 @@ function setupPlotlyChart(jsonData) {
 
     transport.onKeyDown = handleKeydown;
     document.addEventListener('keydown', handleKeydown, true);
+    ensureVidplotFocusGuards(transport);
     // Drop legacy dual-binding if an older session left it around
     if (window._vidplotKeyHandler) {
         document.removeEventListener('keydown', window._vidplotKeyHandler, true);

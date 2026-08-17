@@ -144,6 +144,9 @@ document.addEventListener("DOMContentLoaded", function () {
         showFrameChartPlaceholder("");
         showDropZone();
         resetProgress();
+        if (typeof window.vidplotResetScopes === "function") {
+            window.vidplotResetScopes();
+        }
     }
 
     // Append progress without innerHTML += (that would destroy #dropError)
