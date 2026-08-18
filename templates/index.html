@@ -85,8 +85,8 @@
           <button type="button" class="scope-toggle" data-scope="motion" role="switch" aria-checked="false" aria-label="Toggle motion vectors"></button>
         </div>
         <div class="scope-switch">
-          <span class="scope-switch-name" title="Overlay block partitioning via FFmpeg codecview=block (needs -export_side_data +venc_params). Supported for H.264 and VP9. Draws partition boxes on the luma plane.">Blocks</span>
-          <button type="button" class="scope-toggle" data-scope="blocks" role="switch" aria-checked="false" aria-label="Toggle block partitions"></button>
+          <span class="scope-switch-name" title="Per-macroblock QP mapped into chroma (H.264/VP9 via codecview=qp), with a fixed 16×16 MB grid on luma. QP tint changes between frames; grid geometry does not.">QP map</span>
+          <button type="button" class="scope-toggle" data-scope="qpmap" role="switch" aria-checked="false" aria-label="Toggle QP map"></button>
         </div>
       </div>
     </div>

@@ -543,7 +543,7 @@ def ffmpeg_input_args(source):
 
 
 # QCTools playback-filter defaults (see bavc/qctools filter graph dump)
-# plus FFmpeg codecview for motion vectors / block partitions:
+# plus FFmpeg codecview for motion vectors / QP map:
 # https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
 SCOPE_ORDER = (
     'oscilloscope',
@@ -551,7 +551,7 @@ SCOPE_ORDER = (
     'histogram',
     'vectorscope',
     'motion',
-    'blocks',
+    'qpmap',
 )
 SCOPE_FILTER_CHAINS = {
     'oscilloscope': (
@@ -563,7 +563,7 @@ SCOPE_FILTER_CHAINS = {
         'graticule=green:flags=numbers+dots:scale=0'
     ),
     'histogram': (
-        'format=yuv420p,histogram=colors_mode=coloronwhite:'
+        'format=yuv420p,histogram=colors_mode=colorongray:'
         'level_height=720:levels_mode=linear'
     ),
     'vectorscope': (
@@ -573,18 +573,19 @@ SCOPE_FILTER_CHAINS = {
     ),
     # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
     'motion': 'codecview=mv=pf+bf+bb',
-    # Requires -export_side_data +venc_params (H.264/VP9); draws partition boxes
-    'blocks': 'codecview=block=1',
+    # Requires -export_side_data +venc_params (H.264/VP9).
+    # qp: paint chroma from per-MB QP; block: fixed 16x16 MB grid on luma.
+    'qpmap': 'codecview=qp=1:block=1',
 }
 
 # Filters that must run on decoder-native frames (side data is resolution-tied)
-SCOPE_NATIVE_FRAME = frozenset({'motion', 'blocks'})
+SCOPE_NATIVE_FRAME = frozenset({'motion', 'qpmap'})
 
 
 def build_scope_filter_complex(filters, preview_width=960):
     """Build a QCTools-style ffmpeg -filter_complex mosaic for selected analyzers.
 
-    Filter strings match QCTools (plus codecview for motion/blocks). Each tile is
+    Filter strings match QCTools (plus codecview for motion/QP map). Each tile is
     scaled to a shared 16:9 canvas. Motion-vector tiles skip the early scale so
     codecview arrows stay aligned with the decoded frame.
     """
@@ -641,13 +642,13 @@ def render_scope_jpeg(video_path, time_sec, filters):
     used_set = set(used)
     needs_native = bool(used_set & SCOPE_NATIVE_FRAME)
     needs_mvs = 'motion' in used_set
-    needs_venc = 'blocks' in used_set
+    needs_venc = 'qpmap' in used_set
     cmd = [
         ffmpeg_bin,
         '-hide_banner',
         '-loglevel', 'error',
     ]
-    # Motion arrows need exported MVs; block boxes need VIDEO_ENC_PARAMS (H.264/VP9)
+    # Motion arrows need exported MVs; QP map needs VIDEO_ENC_PARAMS (H.264/VP9)
     if needs_mvs:
         cmd.extend(['-flags2', '+export_mvs'])
     if needs_venc:
