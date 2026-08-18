@@ -334,6 +334,26 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   pointer-events: auto;
 }
 
+/* Live frame reference for waveform / histogram / vectorscope */
+#videoStage.has-scopes.has-scope-pip #videoPlayer {
+  inset: auto;
+  top: 12px;
+  right: 12px;
+  width: min(28%, 260px);
+  height: auto;
+  max-width: 260px;
+  max-height: 32%;
+  margin: 0;
+  opacity: 1;
+  z-index: 4;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  cursor: default;
+}
+
 #scopePreview {
   display: none;
   max-width: 100%;

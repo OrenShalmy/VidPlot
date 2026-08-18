@@ -51,6 +51,9 @@ document.addEventListener("DOMContentLoaded", function () {
         },
     };
 
+    // Full-frame analysis scopes — show live video as a top-right PiP reference
+    const SCOPE_PIP = new Set(["waveform", "histogram", "vectorscope"]);
+
     const active = new Set();
     let abortController = null;
     let objectUrl = null;
@@ -78,9 +81,16 @@ document.addEventListener("DOMContentLoaded", function () {
             .filter(Boolean);
     }
 
+    function updateScopePip(filters) {
+        const names = filters || selectedFilters();
+        const showPip = names.some((name) => SCOPE_PIP.has(name));
+        stage.classList.toggle("has-scope-pip", showPip);
+    }
+
     function updateLegend(filters) {
         if (!legendEl) return;
         const names = (filters || []).filter((name) => SCOPE_LEGENDS[name]);
+        updateScopePip(filters || names);
         if (!names.length) {
             legendEl.hidden = true;
             legendEl.innerHTML = "";
@@ -130,6 +140,7 @@ document.addEventListener("DOMContentLoaded", function () {
         preview.removeAttribute("src");
         preview.hidden = true;
         stage.classList.remove("has-scopes");
+        stage.classList.remove("has-scope-pip");
         updateLegend([]);
         setStatus("");
         lastRequestKey = "";
@@ -197,6 +208,7 @@ document.addEventListener("DOMContentLoaded", function () {
             console.error(err);
             preview.hidden = true;
             stage.classList.remove("has-scopes");
+            stage.classList.remove("has-scope-pip");
             setStatus(err.message || "Scope preview failed", true);
         }
     }
