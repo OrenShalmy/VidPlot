@@ -2,9 +2,54 @@ document.addEventListener("DOMContentLoaded", function () {
     const video = document.getElementById("videoPlayer");
     const stage = document.getElementById("videoStage");
     const preview = document.getElementById("scopePreview");
+    const legendEl = document.getElementById("scopeLegend");
     const statusEl = document.getElementById("scopeStatus");
     const toggles = Array.from(document.querySelectorAll(".scope-toggle[data-scope]"));
     if (!video || !stage || !preview || !toggles.length) return;
+
+    const SCOPE_LEGENDS = {
+        oscilloscope: {
+            title: "Oscilloscope",
+            x: "Sample position along trace",
+            y: "Signal level",
+        },
+        waveform: {
+            title: "Waveform",
+            x: "Horizontal position (left → right)",
+            y: "Luma level (black → white)",
+        },
+        histogram: {
+            title: "Histogram",
+            x: "Level 0 → 255",
+            y: "Pixel count",
+            channels: [
+                { name: "R", color: "#ff5a5a" },
+                { name: "G", color: "#5dff7a" },
+                { name: "B", color: "#5aa7ff" },
+            ],
+        },
+        vectorscope: {
+            title: "Vectorscope",
+            x: "U / Cb (green ← → magenta)",
+            y: "V / Cr (blue ← → yellow)",
+            note: "Center — low saturation · Edges — high saturation",
+        },
+        motion: {
+            title: "Motion vectors",
+            x: "Frame X",
+            y: "Frame Y",
+            note: "Arrows show predicted motion",
+        },
+        qpmap: {
+            title: "QP map",
+            x: "Frame X",
+            y: "Frame Y",
+            channels: [
+                { name: "Low QP", color: "#5dff7a" },
+                { name: "High QP", color: "#ffffff" },
+            ],
+        },
+    };
 
     const active = new Set();
     let abortController = null;
@@ -33,6 +78,35 @@ document.addEventListener("DOMContentLoaded", function () {
             .filter(Boolean);
     }
 
+    function updateLegend(filters) {
+        if (!legendEl) return;
+        const names = (filters || []).filter((name) => SCOPE_LEGENDS[name]);
+        if (!names.length) {
+            legendEl.hidden = true;
+            legendEl.innerHTML = "";
+            return;
+        }
+        legendEl.innerHTML = names.map((name) => {
+            const info = SCOPE_LEGENDS[name];
+            const channels = (info.channels || [])
+                .map((ch) => (
+                    `<span class="scope-legend-swatch">`
+                    + `<i style="background:${ch.color}"></i>${ch.name}</span>`
+                ))
+                .join("");
+            return (
+                `<div class="scope-legend-block">`
+                + `<div class="scope-legend-name">${info.title}</div>`
+                + `<div class="scope-legend-axis"><span>X</span>${info.x}</div>`
+                + `<div class="scope-legend-axis"><span>Y</span>${info.y}</div>`
+                + (info.note ? `<div class="scope-legend-note">${info.note}</div>` : "")
+                + (channels ? `<div class="scope-legend-channels">${channels}</div>` : "")
+                + `</div>`
+            );
+        }).join("");
+        legendEl.hidden = false;
+    }
+
     function sourcePath() {
         return window.vidplotJsonData?.format?.source_path
             || window.vidplotCurrentSourcePath
@@ -56,6 +130,7 @@ document.addEventListener("DOMContentLoaded", function () {
         preview.removeAttribute("src");
         preview.hidden = true;
         stage.classList.remove("has-scopes");
+        updateLegend([]);
         setStatus("");
         lastRequestKey = "";
     }
@@ -67,6 +142,7 @@ document.addEventListener("DOMContentLoaded", function () {
             btn.classList.toggle("is-active", on);
         });
         if (!active.size) clearPreview();
+        else updateLegend(selectedFilters());
     }
 
     async function refreshScopes(force) {
@@ -75,6 +151,7 @@ document.addEventListener("DOMContentLoaded", function () {
             clearPreview();
             return;
         }
+        updateLegend(filters);
         const path = sourcePath();
         if (!path) {
             setStatus("No source path for scopes", true);

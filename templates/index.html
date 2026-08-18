@@ -13,6 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/player.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/panels.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
   <script src="{{ url_for('static', filename='js/scopes.js') }}"></script>
   <script src="{{ url_for('static', filename='js/plotly.js') }}"></script>
@@ -61,6 +62,7 @@
           Your browser does not support the video tag.
         </video>
         <img id="scopePreview" alt="" hidden>
+        <div id="scopeLegend" class="scope-legend" hidden></div>
         <div id="scopeStatus" class="scope-status" hidden></div>
       </div>
       <div id="scopeToggles" class="scope-toggles" role="toolbar" aria-label="Video analyzers">
@@ -73,7 +75,7 @@
           <button type="button" class="scope-toggle" data-scope="waveform" role="switch" aria-checked="false" aria-label="Toggle waveform"></button>
         </div>
         <div class="scope-switch">
-          <span class="scope-switch-name" title="Distribution of Y, U, and V values. See whether the signal uses full range or sits legal/narrow.">Histogram</span>
+          <span class="scope-switch-name" title="Overlapping R/G/B level distribution (0–255). Check exposure, clipped highlights/shadows, and channel balance.">Histogram</span>
           <button type="button" class="scope-toggle" data-scope="histogram" role="switch" aria-checked="false" aria-label="Toggle histogram"></button>
         </div>
         <div class="scope-switch">
@@ -90,19 +92,42 @@
         </div>
       </div>
     </div>
-    <aside id="streamTree" aria-label="Tracks"></aside>
-    <aside id="mediaInfo" class="media-info-overlay"></aside>
+    <aside id="sideRail" aria-label="Tracks and properties">
+      <div class="panel-side-bar">
+        <span class="panel-side-title">Tracks &amp; properties</span>
+        <button type="button" id="sideRailToggle" class="panel-fold-btn" title="Fold tracks and properties" aria-expanded="true" aria-controls="sideRailBody">
+          <span class="panel-fold-chevron" aria-hidden="true"></span>
+          <span class="panel-fold-label">Fold</span>
+        </button>
+      </div>
+      <button type="button" id="sideRailExpand" class="panel-edge-tab" title="Show tracks and properties" aria-expanded="false" aria-controls="sideRailBody" hidden>
+        <span class="panel-edge-tab-text">Tracks</span>
+      </button>
+      <div id="sideRailBody">
+        <div id="streamTree" aria-label="Tracks"></div>
+        <div id="mediaInfo" class="media-info-overlay"></div>
+      </div>
+    </aside>
   </section>
 
-  <section id="frameGraphSection">
-    <div id="frameChartWrap">
-      <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">
-        <span class="frame-type-item"><span class="frame-type-swatch i" aria-hidden="true"></span>I</span>
-        <span class="frame-type-item"><span class="frame-type-swatch p" aria-hidden="true"></span>P</span>
-        <span class="frame-type-item"><span class="frame-type-swatch b" aria-hidden="true"></span>B</span>
+  <section id="bottomChrome">
+    <section id="frameGraphSection">
+      <div class="panel-graph-bar">
+        <span class="panel-graph-title">Frame graph</span>
+        <button type="button" id="graphPanelToggle" class="panel-fold-btn" title="Fold frame graph" aria-expanded="true" aria-controls="frameChartWrap">
+          <span class="panel-fold-chevron" aria-hidden="true"></span>
+          <span class="panel-fold-label">Fold</span>
+        </button>
       </div>
-      <div id="frameChart"></div>
-    </div>
+      <div id="frameChartWrap">
+        <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">
+          <span class="frame-type-item"><span class="frame-type-swatch i" aria-hidden="true"></span>I</span>
+          <span class="frame-type-item"><span class="frame-type-swatch p" aria-hidden="true"></span>P</span>
+          <span class="frame-type-item"><span class="frame-type-swatch b" aria-hidden="true"></span>B</span>
+        </div>
+        <div id="frameChart"></div>
+      </div>
+    </section>
     <div id="plotControls">
       <div id="playerControls">
         <button type="button" id="playPauseBtn" title="Play/Pause" aria-label="Play/Pause">
@@ -125,46 +150,57 @@
   </section>
 </main>
 
-<aside id="sideMenu" class="collapsed" aria-hidden="true">
-  <button type="button" id="sideMenuToggle" title="Menu" aria-expanded="false" aria-controls="sideMenuPanel">
-    <span class="side-menu-toggle-icon" aria-hidden="true"></span>
+<aside id="sideMenu" class="collapsed" aria-hidden="false">
+  <button type="button" id="sideMenuToggle" class="side-menu-edge-tab" title="Show options" aria-expanded="false" aria-controls="sideMenuPanel">
+    <span class="side-menu-edge-text">Options</span>
   </button>
   <div id="sideMenuPanel">
-    <div class="side-menu-brand">VidPlot</div>
-    <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, drop a file, or paste a URL on the open screen">
-      <span class="load-drop-title">Load new video</span>
-      <span class="load-drop-hint">file, drop, or URL</span>
-    </button>
-
-    <div class="config-section">
-      <h4>Configure</h4>
-      <label class="config-field" for="ffprobePathInput">
-        <span>ffprobe path</span>
-        <input type="text" id="ffprobePathInput" placeholder="/usr/local/bin/ffprobe" spellcheck="false" autocomplete="off">
-      </label>
-      <label class="config-field" for="ffmpegPathInput">
-        <span>ffmpeg path</span>
-        <input type="text" id="ffmpegPathInput" placeholder="/usr/local/bin/ffmpeg" spellcheck="false" autocomplete="off">
-      </label>
-      <p class="config-hint">Leave blank to use binaries on PATH. ffmpeg is used for per-frame Avg QP.</p>
-      <button type="button" id="saveConfigBtn" class="side-menu-action config-save">Save</button>
-      <p id="configStatus" class="config-status" aria-live="polite"></p>
+    <div class="side-menu-bar">
+      <span class="side-menu-bar-title">Options</span>
+      <button type="button" id="sideMenuFold" class="panel-fold-btn" title="Fold options" aria-expanded="true" aria-controls="sideMenuPanel">
+        <span class="panel-fold-chevron side-menu-fold-chevron" aria-hidden="true"></span>
+        <span class="panel-fold-label">Fold</span>
+      </button>
     </div>
+    <div class="side-menu-body">
+      <div class="side-menu-brand">VidPlot</div>
+      <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, drop a file, or paste a URL on the open screen">
+        <span class="load-drop-title">Load new video</span>
+        <span class="load-drop-hint">file, drop, or URL</span>
+      </button>
 
-    <div class="shortcuts-guide">
-      <h4>Shortcuts</h4>
-      <ul>
-        <li><span class="shortcut-keys"><kbd>→</kbd></span><span class="shortcut-desc">Skip +1s</span></li>
-        <li><span class="shortcut-keys"><kbd>←</kbd></span><span class="shortcut-desc">Skip −1s</span></li>
-        <li><span class="shortcut-keys"><kbd>&gt;</kbd><kbd>.</kbd></span><span class="shortcut-desc">Next frame</span></li>
-        <li><span class="shortcut-keys"><kbd>&lt;</kbd><kbd>,</kbd></span><span class="shortcut-desc">Prev frame</span></li>
-        <li><span class="shortcut-keys"><kbd>Space</kbd></span><span class="shortcut-desc">Play / pause</span></li>
-        <li><span class="shortcut-keys"><kbd>J</kbd></span><span class="shortcut-desc">Reverse 1×–4×</span></li>
-        <li><span class="shortcut-keys"><kbd>K</kbd></span><span class="shortcut-desc">Stop</span></li>
-        <li><span class="shortcut-keys"><kbd>L</kbd></span><span class="shortcut-desc">Play 1×–4×</span></li>
-        <li><span class="shortcut-keys"><kbd>+</kbd></span><span class="shortcut-desc">Zoom in</span></li>
-        <li><span class="shortcut-keys"><kbd>−</kbd></span><span class="shortcut-desc">Zoom out</span></li>
-      </ul>
+      <div class="config-section">
+        <h4>Configure</h4>
+        <label class="config-field" for="ffprobePathInput">
+          <span>ffprobe path</span>
+          <input type="text" id="ffprobePathInput" placeholder="/usr/local/bin/ffprobe" spellcheck="false" autocomplete="off">
+        </label>
+        <label class="config-field" for="ffmpegPathInput">
+          <span>ffmpeg path</span>
+          <input type="text" id="ffmpegPathInput" placeholder="/usr/local/bin/ffmpeg" spellcheck="false" autocomplete="off">
+        </label>
+        <p class="config-hint">Leave blank to use binaries on PATH. ffmpeg is used for per-frame Avg QP.</p>
+        <button type="button" id="saveConfigBtn" class="side-menu-action config-save">Save</button>
+        <p id="configStatus" class="config-status" aria-live="polite"></p>
+      </div>
+
+      <div class="shortcuts-guide">
+        <h4>Shortcuts</h4>
+        <ul>
+          <li><span class="shortcut-keys"><kbd>→</kbd></span><span class="shortcut-desc">Skip +1s</span></li>
+          <li><span class="shortcut-keys"><kbd>←</kbd></span><span class="shortcut-desc">Skip −1s</span></li>
+          <li><span class="shortcut-keys"><kbd>&gt;</kbd><kbd>.</kbd></span><span class="shortcut-desc">Next frame</span></li>
+          <li><span class="shortcut-keys"><kbd>&lt;</kbd><kbd>,</kbd></span><span class="shortcut-desc">Prev frame</span></li>
+          <li><span class="shortcut-keys"><kbd>Space</kbd></span><span class="shortcut-desc">Play / pause</span></li>
+          <li><span class="shortcut-keys"><kbd>J</kbd></span><span class="shortcut-desc">Reverse 1×–4×</span></li>
+          <li><span class="shortcut-keys"><kbd>K</kbd></span><span class="shortcut-desc">Stop</span></li>
+          <li><span class="shortcut-keys"><kbd>L</kbd></span><span class="shortcut-desc">Play 1×–4×</span></li>
+          <li><span class="shortcut-keys"><kbd>+</kbd></span><span class="shortcut-desc">Zoom in</span></li>
+          <li><span class="shortcut-keys"><kbd>−</kbd></span><span class="shortcut-desc">Zoom out</span></li>
+          <li><span class="shortcut-keys"><kbd>]</kbd></span><span class="shortcut-desc">Fold side panels</span></li>
+          <li><span class="shortcut-keys"><kbd>G</kbd></span><span class="shortcut-desc">Fold frame graph</span></li>
+        </ul>
+      </div>
     </div>
   </div>
 </aside>

@@ -545,13 +545,80 @@ function setupPlotlyChart(jsonData) {
         ];
     }
     function getChartHeight() {
+        if (typeof window.vidplotIsGraphCollapsed === "function" && window.vidplotIsGraphCollapsed()) {
+            const peek = typeof window.vidplotGetPeekChartHeight === "function"
+                ? window.vidplotGetPeekChartHeight()
+                : 72;
+            return peek;
+        }
+        // Prefer the wrap box — it is flex-sized by the parent and settles after fold/expand.
+        const wrap = document.getElementById('frameChartWrap');
+        if (wrap && wrap.clientHeight > 0) {
+            return Math.max(80, wrap.clientHeight);
+        }
         const section = document.getElementById('frameGraphSection');
-        const controls = document.getElementById('plotControls');
+        const graphBar = document.querySelector('.panel-graph-bar');
         if (!section) return 220;
-        const controlsHeight = controls ? controls.offsetHeight : 56;
-        const available = section.clientHeight - controlsHeight - 4;
-        return Math.max(140, available);
+        const barHeight = graphBar ? graphBar.offsetHeight : 0;
+        const available = section.clientHeight - barHeight - 4;
+        return Math.max(80, available);
     }
+
+    let resizeFrameChartTimer = null;
+    function resizeFrameChart() {
+        const chartDiv = document.getElementById('frameChart');
+        if (!chartDiv || typeof Plotly === 'undefined' || !chartDiv.data) return;
+        if (!layout) return;
+        const collapsed = typeof window.vidplotIsGraphCollapsed === "function"
+            && window.vidplotIsGraphCollapsed();
+        const nextHeight = getChartHeight();
+        // Skip no-op relayouts from ResizeObserver feedback
+        if (
+            Math.abs((layout.height || 0) - nextHeight) < 1
+            && !!layout._vidplotCollapsed === collapsed
+        ) {
+            return;
+        }
+        layout.height = nextHeight;
+        layout._vidplotCollapsed = collapsed;
+        // Peek mode: tiny plot + zoom dragmode eats clicks; disable drag and shrink chrome.
+        const margin = collapsed
+            ? { l: 8, r: 8, t: 2, b: 2 }
+            : { l: 56, r: 24, t: 16, b: 40 };
+        layout.margin = margin;
+        layout.dragmode = collapsed ? false : 'zoom';
+        layout.hovermode = collapsed ? 'x' : 'closest';
+        const payload = {
+            height: layout.height,
+            autosize: true,
+            margin,
+            dragmode: layout.dragmode,
+            hovermode: layout.hovermode,
+            'xaxis.title.text': collapsed ? '' : 'Timestamp (s)',
+            'yaxis.title.text': collapsed ? '' : 'Frame size (Mb)',
+            'xaxis.showticklabels': !collapsed,
+            'yaxis.showticklabels': !collapsed,
+            'xaxis.ticks': collapsed ? '' : 'outside',
+            'yaxis.ticks': collapsed ? '' : 'outside',
+        };
+        Plotly.relayout('frameChart', payload).then(() => {
+            Plotly.Plots.resize(chartDiv);
+        }).catch(() => {
+            Plotly.Plots.resize(chartDiv);
+        });
+    }
+
+    function scheduleResizeFrameChart() {
+        if (resizeFrameChartTimer !== null) {
+            clearTimeout(resizeFrameChartTimer);
+        }
+        resizeFrameChartTimer = setTimeout(() => {
+            resizeFrameChartTimer = null;
+            resizeFrameChart();
+        }, 16);
+    }
+
+    window.vidplotResizeFrameChart = resizeFrameChart;
 
     let traces = createTraces();
     layout = {
@@ -611,6 +678,18 @@ function setupPlotlyChart(jsonData) {
         ]
     };
 
+    let lastChartSeekMs = 0;
+    function seekChartToTime(clickedTime) {
+        const now = performance.now();
+        if (now - lastChartSeekMs < 40) return;
+        lastChartSeekMs = now;
+        const t = Math.max(0, Math.min(duration, Number(clickedTime)));
+        if (!Number.isFinite(t)) return;
+        if (transport.shuttleRate < 0) pausePlayback();
+        videoPlayer.currentTime = t;
+        syncPlayheadView(t, true);
+    }
+
     // --- Plotly Chart Init ---
     Plotly.newPlot('frameChart', traces, layout, {
         displaylogo: false,
@@ -633,10 +712,26 @@ function setupPlotlyChart(jsonData) {
         chartDiv.on('plotly_click', function(data) {
             if (data.points && data.points.length > 0) {
                 const clickedTime = parseFloat(data.points[0].x);
-                if (transport.shuttleRate < 0) pausePlayback();
-                videoPlayer.currentTime = clickedTime;
-                syncPlayheadView(clickedTime, true);
+                seekChartToTime(clickedTime);
             }
+        });
+        // Peek strip: map raw x-position when point picking / zoom drag would miss
+        chartDiv.addEventListener('click', function(evt) {
+            if (typeof window.vidplotIsGraphCollapsed !== 'function' || !window.vidplotIsGraphCollapsed()) {
+                return;
+            }
+            if (evt.target && evt.target.closest && evt.target.closest('.modebar')) return;
+            const full = chartDiv._fullLayout;
+            if (!full || !full.xaxis) return;
+            const xa = full.xaxis;
+            const plotLeft = chartDiv.getBoundingClientRect().left + (xa._offset || full.margin.l || 0);
+            const plotWidth = xa._length || 0;
+            if (plotWidth <= 0) return;
+            const frac = Math.max(0, Math.min(1, (evt.clientX - plotLeft) / plotWidth));
+            const range = (layout.xaxis && layout.xaxis.range) || [0, duration];
+            const clickedTime = range[0] + frac * (range[1] - range[0]);
+            if (!Number.isFinite(clickedTime)) return;
+            seekChartToTime(clickedTime);
         });
         chartDiv.on('plotly_relayout', function(eventData) {
             if (syncingZoomSlider) return;
@@ -655,14 +750,16 @@ function setupPlotlyChart(jsonData) {
         layout.height = getChartHeight();
         Plotly.relayout('frameChart', { height: layout.height, autosize: true });
         Plotly.Plots.resize(chartDiv);
+        const wrap = document.getElementById('frameChartWrap');
+        if (wrap && typeof ResizeObserver !== 'undefined' && !wrap._vidplotRo) {
+            const ro = new ResizeObserver(() => scheduleResizeFrameChart());
+            ro.observe(wrap);
+            wrap._vidplotRo = ro;
+        }
     });
 
     window.onresize = function() {
-        const chartDiv = document.getElementById('frameChart');
-        if (!chartDiv) return;
-        layout.height = getChartHeight();
-        Plotly.relayout('frameChart', { height: layout.height });
-        Plotly.Plots.resize(chartDiv);
+        scheduleResizeFrameChart();
     };
 
     // --- Video/Marker Sync ---

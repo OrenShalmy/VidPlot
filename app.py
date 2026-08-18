@@ -563,8 +563,10 @@ SCOPE_FILTER_CHAINS = {
         'graticule=green:flags=numbers+dots:scale=0'
     ),
     'histogram': (
-        'format=yuv420p,histogram=colors_mode=colorongray:'
-        'level_height=720:levels_mode=linear'
+        # Overlapping R/G/B levels on black (Resolve/QCTools-style “levels” look)
+        'format=gbrp,histogram=display_mode=overlay:colors_mode=coloronblack:'
+        'level_height=720:scale_height=0:bgopacity=1:fgopacity=0.85:'
+        'levels_mode=linear'
     ),
     'vectorscope': (
         'format=yuv420p,vectorscope=i=0.1:mode=3:envelope=0:colorspace=1:'

@@ -5,9 +5,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const videoSource = document.getElementById("videoSource");
     const mediaInfo = document.getElementById("mediaInfo");
     const videoSection = document.getElementById("videoSection");
+    const bottomChrome = document.getElementById("bottomChrome");
     const frameGraphSection = document.getElementById("frameGraphSection");
     const sideMenu = document.getElementById("sideMenu");
     const sideMenuToggle = document.getElementById("sideMenuToggle");
+    const sideMenuFold = document.getElementById("sideMenuFold");
     const loadNewVideoBtn = document.getElementById("loadNewVideoBtn");
     const dropError = document.getElementById("dropError");
 
@@ -16,14 +18,20 @@ document.addEventListener("DOMContentLoaded", function () {
     let analysisGeneration = 0;
 
     if (videoSection) videoSection.style.display = "none";
-    if (frameGraphSection) frameGraphSection.style.display = "none";
+    if (bottomChrome) bottomChrome.style.display = "none";
+    else if (frameGraphSection) frameGraphSection.style.display = "none";
 
     function showSideMenu() {
         if (!sideMenu) return;
         sideMenu.classList.add("visible");
         sideMenu.classList.add("collapsed");
         sideMenu.setAttribute("aria-hidden", "false");
-        if (sideMenuToggle) sideMenuToggle.setAttribute("aria-expanded", "false");
+        if (sideMenuToggle) {
+            sideMenuToggle.hidden = false;
+            sideMenuToggle.setAttribute("aria-expanded", "false");
+            sideMenuToggle.title = "Show options";
+        }
+        if (sideMenuFold) sideMenuFold.setAttribute("aria-expanded", "false");
     }
 
     showSideMenu();
@@ -31,7 +39,14 @@ document.addEventListener("DOMContentLoaded", function () {
     function setSideMenuCollapsed(collapsed) {
         if (!sideMenu) return;
         sideMenu.classList.toggle("collapsed", collapsed);
-        if (sideMenuToggle) sideMenuToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        if (sideMenuToggle) {
+            sideMenuToggle.hidden = !collapsed;
+            sideMenuToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+            sideMenuToggle.title = collapsed ? "Show options" : "Hide options";
+        }
+        if (sideMenuFold) {
+            sideMenuFold.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        }
         // Config text fields keep focus when the drawer closes, which blocks JKL / frame keys
         if (collapsed) {
             const active = document.activeElement;
@@ -46,14 +61,22 @@ document.addEventListener("DOMContentLoaded", function () {
         // Clear any inline display from showDropZone — CSS alone cannot override it
         if (dropArea) dropArea.style.display = "";
         if (videoSection) videoSection.style.display = "flex";
-        if (frameGraphSection) frameGraphSection.style.display = "flex";
+        if (bottomChrome) bottomChrome.style.display = "flex";
+        else if (frameGraphSection) frameGraphSection.style.display = "flex";
+        if (typeof window.vidplotResetPanelsForNewVideo === "function") {
+            window.vidplotResetPanelsForNewVideo();
+        } else if (typeof window.vidplotExpandPanels === "function") {
+            window.vidplotExpandPanels();
+        }
         showSideMenu();
     }
 
     function showDropZone() {
         document.body.classList.remove("is-loaded");
+        document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
         if (videoSection) videoSection.style.display = "none";
-        if (frameGraphSection) frameGraphSection.style.display = "none";
+        if (bottomChrome) bottomChrome.style.display = "none";
+        else if (frameGraphSection) frameGraphSection.style.display = "none";
         if (dropArea) dropArea.style.display = "flex";
         showSideMenu();
     }
@@ -76,7 +99,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (sideMenuToggle) {
         sideMenuToggle.addEventListener("click", (e) => {
             e.stopPropagation();
-            setSideMenuCollapsed(!sideMenu.classList.contains("collapsed"));
+            setSideMenuCollapsed(false);
+        });
+    }
+    if (sideMenuFold) {
+        sideMenuFold.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setSideMenuCollapsed(true);
         });
     }
 

@@ -211,10 +211,10 @@ function updatemediaInfo(jsonData) {
       }));
   }
 
-  function row(label, value) {
+  function row(label, value, { full = false } = {}) {
     if (value === undefined || value === null || value === '' || Number.isNaN(value)) return '';
     return `
-      <div class="info-item">
+      <div class="info-item${full ? ' info-item-full' : ''}">
         <span class="label">${escapeHtml(label)}</span>
         <span class="value" title="${escapeHtml(value)}">${escapeHtml(value)}</span>
       </div>
@@ -227,13 +227,15 @@ function updatemediaInfo(jsonData) {
       <div class="info-section">
         <h3>Properties</h3>
         <div class="info-subtitle">Container</div>
-        ${row(format.is_remote ? 'URL' : 'Path', displayPath)}
-        ${row('Format', format.format_long_name || format.format_name)}
-        ${row('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
-        ${row('Duration', formatDuration(format.duration))}
-        ${row('Bit rate', formatBitrate(format.bit_rate))}
-        ${row('Streams', String((jsonData.streams || []).length))}
-        ${row('Probe score', format.probe_score)}
+        <div class="info-grid">
+          ${row(format.is_remote ? 'URL' : 'Path', displayPath, { full: true })}
+          ${row('Format', format.format_long_name || format.format_name, { full: true })}
+          ${row('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
+          ${row('Duration', formatDuration(format.duration))}
+          ${row('Bit rate', formatBitrate(format.bit_rate))}
+          ${row('Streams', String((jsonData.streams || []).length))}
+          ${row('Probe score', format.probe_score)}
+        </div>
       </div>
     `;
   }
@@ -292,18 +294,20 @@ function updatemediaInfo(jsonData) {
       <div class="info-section">
         <h3>Properties</h3>
         <div class="info-subtitle">${escapeHtml(type)} · #${stream.index ?? listIndex}</div>
-        ${row('Codec', stream.codec_long_name || stream.codec_name)}
-        ${row('Codec name', stream.codec_name)}
-        ${row('Profile', stream.profile)}
-        ${row('Level', level)}
-        ${row('Bit rate', formatBitrate(stream.bit_rate))}
-        ${row('Duration', formatDuration(stream.duration || stream.tags?.DURATION))}
-        ${row('Time base', stream.time_base)}
-        ${row('Start', formatDuration(stream.start_time))}
-        ${row('Frames', stream.nb_frames)}
-        ${typeRows}
-        ${row('Disposition', dispositionOn || null)}
-        ${tagRows ? `<div class="info-subtitle">Tags</div>${tagRows}` : ''}
+        <div class="info-grid">
+          ${row('Codec', stream.codec_long_name || stream.codec_name, { full: true })}
+          ${row('Codec name', stream.codec_name)}
+          ${row('Profile', stream.profile)}
+          ${row('Level', level)}
+          ${row('Bit rate', formatBitrate(stream.bit_rate))}
+          ${row('Duration', formatDuration(stream.duration || stream.tags?.DURATION))}
+          ${row('Time base', stream.time_base)}
+          ${row('Start', formatDuration(stream.start_time))}
+          ${row('Frames', stream.nb_frames)}
+          ${typeRows}
+          ${row('Disposition', dispositionOn || null)}
+          ${tagRows ? `<div class="info-subtitle info-grid-break">Tags</div>${tagRows}` : ''}
+        </div>
       </div>
     `;
   }
