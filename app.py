@@ -22,6 +22,64 @@ QP_HEADER_GAP_RE = re.compile(r'\d\s{3,}\d')
 # Currently opened source video (original path; not copied)
 current_source_path = None
 
+PRORES_CODECS = frozenset({
+    'prores', 'prores_aw', 'prores_ks', 'prores_lt', 'prores_hq',
+    'prores_4444', 'prores_xq', 'prores_vlog',
+})
+PROXY_PLAYBACK_CODECS = PRORES_CODECS | frozenset({'dnxhd', 'dnxhr', 'v210', 'rawvideo'})
+
+
+def primary_video_codec(json_data):
+    for stream in json_data.get('streams') or []:
+        if stream.get('codec_type') == 'video':
+            return (stream.get('codec_name') or '').lower()
+    return ''
+
+
+def needs_playback_proxy(codec):
+    if not codec:
+        return False
+    if codec in PROXY_PLAYBACK_CODECS or codec.startswith('prores'):
+        return True
+    return False
+
+
+def media_cache_key(video_path):
+    """Stable token for /media/source?v= — busts browser cache between files."""
+    if is_http_url(video_path):
+        return hashlib.sha256(video_path.encode('utf-8')).hexdigest()[:16]
+    try:
+        st = os.stat(video_path)
+        raw = f'{video_path}|{st.st_mtime_ns}|{st.st_size}'
+    except OSError:
+        raw = video_path
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
+
+
+def playback_needs_proxy(video_path):
+    _, json_path = analysis_json_paths(video_path)
+    if os.path.isfile(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as handle:
+                data = json.load(handle)
+            return needs_playback_proxy(primary_video_codec(data))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return False
+
+
+def local_video_playback_url(video_path):
+    return url_for('serve_source', v=media_cache_key(video_path))
+
+
+def no_store_video_response(payload):
+    if hasattr(payload, 'headers'):
+        payload.headers['Cache-Control'] = 'no-store'
+        return payload
+    response = Response(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
 
 def is_frozen():
     return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
@@ -461,8 +519,9 @@ def analyze_video_file(video_path):
 
     current_source_path = video_path
     duration = float(json_data.get('format', {}).get('duration', 0) or 0)
-    # Play remote URLs directly in <video>; local files go through Flask
-    video_url = video_path if remote else url_for('serve_source')
+    # Unique ?v= per file so Chromium does not reuse a cached /media/source clip.
+    video_url = video_path if remote else local_video_playback_url(video_path)
+    playback_proxy = needs_playback_proxy(primary_video_codec(json_data))
 
     return {
         'message': 'File opened successfully',
@@ -472,6 +531,7 @@ def analyze_video_file(video_path):
         'filename': filename,
         'source_path': video_path,
         'is_remote': remote,
+        'playback_proxy': playback_proxy,
         'status': 'opened',
         'frames_pending': True,
         'qp_pending': ffmpeg_available,
@@ -742,7 +802,57 @@ def serve_source():
         return redirect(current_source_path)
     if not os.path.isfile(current_source_path):
         abort(404)
-    return send_file(current_source_path)
+
+    token = request.args.get('v', '')
+    expected = media_cache_key(current_source_path)
+    if token != expected:
+        abort(404)
+
+    if playback_needs_proxy(current_source_path):
+        return no_store_video_response(stream_playback_proxy(current_source_path))
+
+    return no_store_video_response(send_file(current_source_path))
+
+
+def stream_playback_proxy(video_path):
+    """H.264 fragmented MP4 for codecs the browser cannot decode (e.g. ProRes)."""
+    config = load_config()
+    ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
+    cmd = [
+        ffmpeg_bin,
+        '-hide_banner',
+        '-loglevel', 'error',
+        *ffmpeg_input_args(video_path),
+        '-i', video_path,
+        '-an',
+        '-vf', 'scale=min(1920\\,iw):-2',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '20',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+        '-f', 'mp4',
+        'pipe:1',
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def generate():
+        try:
+            while True:
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+
+    return Response(
+        generate(),
+        mimetype='video/mp4',
+        headers={'Cache-Control': 'no-store'},
+    )
 
 
 @app.route('/media/logs/<path:filename>')

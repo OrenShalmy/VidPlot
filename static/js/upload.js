@@ -165,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (streamTree) streamTree.innerHTML = "";
         if (videoUpload) videoUpload.value = "";
         window.vidplotCurrentFilename = "";
+        window.vidplotCurrentSourcePath = "";
         window.vidplotJsonData = null;
         clearDropError();
         resetLoadDropStatus();
@@ -173,6 +174,7 @@ document.addEventListener("DOMContentLoaded", function () {
         showFrameChartPlaceholder("");
         showDropZone();
         resetProgress();
+        if (videoPlayer) videoPlayer.dataset.vidplotSource = "";
         if (typeof window.vidplotResetScopes === "function") {
             window.vidplotResetScopes();
         }
@@ -370,12 +372,23 @@ document.addEventListener("DOMContentLoaded", function () {
     function presentShell(result, jsonData, generation) {
         clearDropError();
         resetLoadDropStatus();
+        const sourcePath = result.source_path || jsonData?.format?.source_path || "";
         window.vidplotCurrentFilename = result.filename || jsonData?.format?.filename || "";
+        window.vidplotCurrentSourcePath = sourcePath;
         window.vidplotJsonData = jsonData;
-        if (videoSource) videoSource.src = result.video_url;
+        if (typeof window.vidplotResetScopes === "function") {
+            window.vidplotResetScopes();
+        }
+        if (videoSource && result.video_url) {
+            videoSource.src = result.video_url;
+        }
         if (videoPlayer) {
             videoPlayer.style.display = "block";
+            videoPlayer.dataset.vidplotSource = sourcePath;
             videoPlayer.load();
+        }
+        if (result.playback_proxy) {
+            setAnalysisStatus("Preparing ProRes preview…");
         }
         if (mediaInfo) mediaInfo.style.display = "block";
         showWorkspace();
@@ -389,7 +402,24 @@ document.addEventListener("DOMContentLoaded", function () {
         showFrameChartPlaceholder("Analyzing frames…");
         resetProgress();
 
-        const path = result.source_path || jsonData?.format?.source_path || "";
+        const path = sourcePath;
+        const onVideoReady = () => {
+            if (generation !== analysisGeneration) return;
+            if (videoPlayer?.dataset.vidplotSource !== sourcePath) return;
+            if (result.playback_proxy) setAnalysisStatus("");
+            if (typeof window.vidplotOnSourceReady === "function") {
+                window.vidplotOnSourceReady(sourcePath);
+            }
+        };
+        if (videoPlayer) {
+            videoPlayer.addEventListener("loadeddata", onVideoReady, { once: true });
+            videoPlayer.addEventListener("error", () => {
+                if (generation !== analysisGeneration) return;
+                if (result.playback_proxy) {
+                    setAnalysisStatus("Preview loading — scopes still work");
+                }
+            }, { once: true });
+        }
         if (result.frames_pending || jsonData?.frames_pending || !(jsonData?.frames || []).length) {
             requestFramesAnalysis(path, jsonData, generation);
         } else if (result.qp_pending || jsonData?.qp_pending) {
@@ -417,7 +447,18 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!path) return;
         const generation = ++analysisGeneration;
         clearDropError();
-        if (videoPlayer) videoPlayer.pause();
+        window.vidplotCurrentSourcePath = path;
+        window.vidplotJsonData = null;
+        if (typeof window.vidplotResetScopes === "function") {
+            window.vidplotResetScopes();
+        }
+        if (videoPlayer) {
+            videoPlayer.pause();
+            videoPlayer.removeAttribute("src");
+            if (videoSource) videoSource.removeAttribute("src");
+            videoPlayer.load();
+        }
+        if (videoPlayer) videoPlayer.dataset.vidplotSource = "";
         setLoadDropStatus("Opening…", "Please wait", { busy: true });
         const urlBtn = document.getElementById("urlOpenBtn");
         if (urlBtn) urlBtn.disabled = true;

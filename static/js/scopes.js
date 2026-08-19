@@ -99,7 +99,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function updateScopePip(filters) {
         const names = filters || selectedFilters();
-        const showPip = names.some((name) => SCOPE_PIP.has(name));
+        const path = sourcePath();
+        const videoReady = path
+            && video.dataset.vidplotSource === path
+            && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+        const showPip = videoReady && names.some((name) => SCOPE_PIP.has(name));
         stage.classList.toggle("has-scope-pip", showPip);
     }
 
@@ -271,9 +275,21 @@ document.addEventListener("DOMContentLoaded", function () {
         syncToggleUi();
         clearPreview();
     };
+    window.vidplotOnSourceReady = function (path) {
+        lastRequestKey = "";
+        if (path && video) video.dataset.vidplotSource = path;
+        if (active.size) {
+            updateScopePip(selectedFilters());
+            refreshScopes(true);
+        }
+    };
     window.vidplotRefreshScopes = function () {
         if (active.size) refreshScopes(true);
     };
+
+    video.addEventListener("loadeddata", () => {
+        if (active.size) updateScopePip(selectedFilters());
+    });
 
     syncToggleUi();
 });
