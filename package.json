@@ -42,7 +42,7 @@
     "mac": {
       "category": "public.app-category.video",
       "icon": "static/icons/VidPlot.icns",
-      "identity": null,
+      "identity": "-",
       "target": [
         "zip"
       ],

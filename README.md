@@ -96,7 +96,20 @@ npm run dist
 
 Output zips land in `dist-electron/`.
 
-macOS builds are **unsigned**. First launch: right-click the app → Open, or `xattr -cr /path/to/VidPlot.app`.
+### macOS: “app is damaged” after download
+
+GitHub release zips are **ad-hoc signed, not notarized**. After Chrome/Safari downloads the zip, macOS adds a quarantine flag and may show **“VidPlot.app is damaged”** — the app is not corrupt; Gatekeeper is blocking an unsigned download.
+
+**Option A — remove quarantine (recommended):**
+
+```bash
+xattr -cr /path/to/VidPlot.app
+open /path/to/VidPlot.app
+```
+
+**Option B — bypass once:** Control-click (or right-click) `VidPlot.app` → **Open** → **Open** again in the dialog.
+
+To ship builds that open without this step, you need an Apple Developer ID certificate plus notarization in CI.
 
 ### CI (macOS + Windows)
 

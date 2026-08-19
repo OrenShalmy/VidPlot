@@ -129,6 +129,19 @@ jobs:
           tag_name: ${{ steps.tag.outputs.name }}
           name: VidPlot ${{ steps.tag.outputs.name }}
           generate_release_notes: true
+          body: |
+            ## macOS first launch
+
+            If macOS says **"VidPlot.app is damaged"**, the download is quarantined, not corrupt. After extracting the zip:
+
+            ```bash
+            xattr -cr /path/to/VidPlot.app
+            open /path/to/VidPlot.app
+            ```
+
+            Or Control-click the app → **Open** → **Open** again.
+
+            FFmpeg must be installed separately (`brew install ffmpeg` on macOS).
           files: |
             artifacts/VidPlot-macOS-arm64.zip
             artifacts/VidPlot-Windows-x64.zip
