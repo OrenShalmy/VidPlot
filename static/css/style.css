@@ -638,11 +638,12 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
 }
 
 .chart-placeholder {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 140px;
-  height: 100%;
+  min-height: 0;
+  width: 100%;
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 0.8rem;
@@ -1111,6 +1112,8 @@ body.panel-graph-collapsed .js-plotly-plot .modebar {
 
 #frameChart {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   width: 100% !important;
   min-height: 0;
   height: 100%;
@@ -1124,6 +1127,8 @@ body.panel-graph-collapsed .js-plotly-plot .modebar {
 /* Do not clamp Plotly's internal SVG — that breaks hover/click hit-testing */
 #frameChart .js-plotly-plot,
 #frameChart .plot-container {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100% !important;
   height: 100% !important;
 }

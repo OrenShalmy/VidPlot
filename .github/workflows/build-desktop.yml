@@ -132,14 +132,12 @@ jobs:
           body: |
             ## macOS first launch
 
-            If macOS says **"VidPlot.app is damaged"**, the download is quarantined, not corrupt. After extracting the zip:
+            Release builds are not notarized. If macOS says **"VidPlot.app is damaged"**, the download is quarantined — not corrupt.
 
-            ```bash
-            xattr -cr /path/to/VidPlot.app
-            open /path/to/VidPlot.app
-            ```
+            1. Control-click `VidPlot.app` → **Open** → **Open** again.
+            2. If still blocked: **System Settings → Privacy & Security** → **Open Anyway**.
 
-            Or Control-click the app → **Open** → **Open** again.
+            Terminal fallback: `cp -R -X ~/Downloads/VidPlot.app /Applications/VidPlot.app`
 
             FFmpeg must be installed separately (`brew install ffmpeg` on macOS).
           files: |

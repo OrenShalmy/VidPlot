@@ -96,20 +96,36 @@ npm run dist
 
 Output zips land in `dist-electron/`.
 
-### macOS: “app is damaged” after download
+### macOS first launch (downloaded from GitHub)
 
-GitHub release zips are **ad-hoc signed, not notarized**. After Chrome/Safari downloads the zip, macOS adds a quarantine flag and may show **“VidPlot.app is damaged”** — the app is not corrupt; Gatekeeper is blocking an unsigned download.
+Release builds are **not notarized**. Chrome/Safari quarantine the zip and macOS may say **“VidPlot.app is damaged”** — the app is fine; Gatekeeper is blocking an unsigned download.
 
-**Option A — remove quarantine (recommended):**
+**Steps that work:**
+
+1. Extract `VidPlot.app` from the zip.
+2. **Control-click** (or right-click) `VidPlot.app` → **Open** → **Open** again.
+3. If macOS still refuses: **System Settings → Privacy & Security** → scroll down → **Open Anyway**.
+
+After that one-time approval, double-click launches normally.
+
+**Alternatives if Terminal is easier:**
+
+Copy to `/Applications` without quarantine xattrs (macOS often blocks `xattr -d` on the `.app` with `Operation not permitted`):
 
 ```bash
-xattr -cr /path/to/VidPlot.app
-open /path/to/VidPlot.app
+cp -R -X ~/Downloads/VidPlot.app /Applications/VidPlot.app
+open /Applications/VidPlot.app
 ```
 
-**Option B — bypass once:** Control-click (or right-click) `VidPlot.app` → **Open** → **Open** again in the dialog.
+Or clear quarantine on the **zip** before extracting:
 
-To ship builds that open without this step, you need an Apple Developer ID certificate plus notarization in CI.
+```bash
+xattr -d com.apple.quarantine ~/Downloads/VidPlot-macOS-arm64.zip
+```
+
+Do **not** use `xattr -cr` or `-dr` on the `.app` — recursing into a signed bundle fails with hundreds of `Operation not permitted` errors.
+
+To ship builds that open without this step, add an Apple Developer ID certificate and notarization in CI.
 
 ### CI (macOS + Windows)
 
