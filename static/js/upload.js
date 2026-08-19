@@ -230,8 +230,14 @@ document.addEventListener("DOMContentLoaded", function () {
         }, 400);
     }
 
+    function hasNativeDesktopBridge() {
+        return !!(window.vidplotDesktop?.openVideo || window.pywebview?.api?.open_video);
+    }
+
     function isDesktopApp() {
-        return desktopMode || !!(window.pywebview && window.pywebview.api);
+        return desktopMode
+            || !!(window.pywebview && window.pywebview.api)
+            || !!window.vidplotDesktop;
     }
 
     function updateDropCopy() {
@@ -243,6 +249,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function fileSystemPath(file) {
         if (!file) return "";
+        if (window.vidplotDesktop && typeof window.vidplotDesktop.pathForFile === "function") {
+            try {
+                const electronPath = window.vidplotDesktop.pathForFile(file);
+                if (electronPath) return electronPath;
+            } catch (_) { /* ignore */ }
+        }
         return file.path || file.pywebviewFullPath || "";
     }
 
@@ -469,12 +481,27 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function waitForNativeApi(timeoutMs = 5000) {
+        if (window.vidplotDesktop?.openVideo) {
+            return { open_video: () => window.vidplotDesktop.openVideo() };
+        }
+        if (window.pywebview?.api?.open_video) return window.pywebview.api;
+        // pywebview injects window.pywebview before the API is ready.
+        // Cursor's browser (and a shell with no preload) never will — don't wait 5s.
+        if (!window.pywebview) return null;
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
+            if (window.vidplotDesktop?.openVideo) {
+                return { open_video: () => window.vidplotDesktop.openVideo() };
+            }
             if (window.pywebview?.api?.open_video) return window.pywebview.api;
             await new Promise((r) => setTimeout(r, 50));
         }
         return null;
+    }
+
+    function pickViaFileInput() {
+        resetProgress();
+        if (videoUpload) videoUpload.click();
     }
 
     async function pickNativeVideo() {
@@ -483,9 +510,8 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const api = await waitForNativeApi();
             if (!api) {
-                throw new Error(
-                    "Desktop bridge not ready. Quit and relaunch VidPlot (use python desktop.py or rebuild the app)."
-                );
+                pickViaFileInput();
+                return;
             }
             const path = await api.open_video();
             if (!path) {
@@ -534,9 +560,8 @@ document.addEventListener("DOMContentLoaded", function () {
             analyzeLocalPath(path);
             return;
         }
-        if (isDesktopApp()) {
-            // Desktop paths arrive via pywebview's native drop bridge (desktop.py).
-            // Do not open the file picker — that was the old fallback and felt broken.
+        if (hasNativeDesktopBridge()) {
+            // Native path comes from Electron pathForFile or pywebview drop.
             return;
         }
         handleUploadedFile(file);
@@ -571,8 +596,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 analyzeLocalPath(path);
                 return;
             }
-            if (isDesktopApp()) {
-                // Path is delivered by desktop.py's native drop bridge
+            if (hasNativeDesktopBridge()) {
                 return;
             }
             handleUploadedFile(file);
@@ -587,7 +611,7 @@ document.addEventListener("DOMContentLoaded", function () {
         ) {
             return;
         }
-        if (isDesktopApp()) {
+        if (hasNativeDesktopBridge() || window.pywebview) {
             pickNativeVideo();
         } else {
             videoUpload.click();
@@ -595,8 +619,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     videoUpload.addEventListener("change", (event) => {
-        // Hard block upload path in desktop mode
-        if (isDesktopApp()) {
+        if (hasNativeDesktopBridge()) {
             videoUpload.value = "";
             pickNativeVideo();
             return;
@@ -606,6 +629,11 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     updateDropCopy();
+    if (window.vidplotDesktop) {
+        desktopMode = true;
+        document.body.dataset.desktop = "1";
+        updateDropCopy();
+    }
     window.addEventListener("pywebviewready", () => {
         desktopMode = true;
         document.body.dataset.desktop = "1";
@@ -613,8 +641,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     function handleUploadedFile(file) {
-        // Browser-only fallback
-        if (isDesktopApp()) {
+        if (hasNativeDesktopBridge()) {
             pickNativeVideo();
             return;
         }

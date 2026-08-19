@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Build the VidPlot desktop app with PyInstaller.
+"""Build the VidPlot analysis sidecar with PyInstaller (used inside Electron).
 
 Usage:
-    python3 -m venv .venv
-    source .venv/bin/activate        # Windows: .venv\\Scripts\\activate
+    python3 -m venv venv
+    source venv/bin/activate
     pip install -r requirements.txt
     python build_desktop.py
+
+Then package the window:
+    npm install
+    npm run dist
 """
 
 import os
@@ -22,8 +26,8 @@ def main():
         import PyInstaller  # noqa: F401
     except ImportError:
         print('PyInstaller not found. Create a venv and install requirements:')
-        print('  python3 -m venv .venv')
-        print('  source .venv/bin/activate')
+        print('  python3 -m venv venv')
+        print('  source venv/bin/activate')
         print('  pip install -r requirements.txt')
         sys.exit(1)
 
@@ -38,18 +42,16 @@ def main():
     if result.returncode != 0:
         sys.exit(result.returncode)
 
-    if sys.platform == 'darwin':
-        app_path = os.path.join(root, 'dist', 'VidPlot.app')
-        print(f'\nBuilt: {app_path}')
-        print('Launch with: open dist/VidPlot.app')
-    elif sys.platform == 'win32':
-        exe_path = os.path.join(root, 'dist', 'VidPlot', 'VidPlot.exe')
-        print(f'\nBuilt: {exe_path}')
-    else:
-        bin_path = os.path.join(root, 'dist', 'VidPlot', 'VidPlot')
-        print(f'\nBuilt: {bin_path}')
+    sidecar = os.path.join(root, 'dist', 'vidplot-server')
+    exe_name = 'VidPlotServer.exe' if sys.platform == 'win32' else 'VidPlotServer'
+    exe_path = os.path.join(sidecar, exe_name)
+    if not os.path.isfile(exe_path):
+        print(f'Expected sidecar missing: {exe_path}', file=sys.stderr)
+        sys.exit(1)
 
-    print('\nDev (no build): python desktop.py')
+    print(f'\nSidecar: {exe_path}')
+    print('Package Electron with: npm run dist')
+    print('Dev (no build): npm run electron')
 
 
 if __name__ == '__main__':

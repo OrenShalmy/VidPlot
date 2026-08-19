@@ -18,6 +18,16 @@ document.addEventListener("DOMContentLoaded", function () {
             x: "Horizontal position (left → right)",
             y: "Luma level (black → white)",
         },
+        rgbparade: {
+            title: "RGB parade",
+            x: "Horizontal position (left → right)",
+            y: "Channel level (0 → 255)",
+            channels: [
+                { name: "R", color: "#ff5a5a" },
+                { name: "G", color: "#5dff7a" },
+                { name: "B", color: "#5aa7ff" },
+            ],
+        },
         histogram: {
             title: "Histogram",
             x: "Level 0 → 255",
@@ -33,6 +43,12 @@ document.addEventListener("DOMContentLoaded", function () {
             x: "U / Cb (green ← → magenta)",
             y: "V / Cr (blue ← → yellow)",
             note: "Center — low saturation · Edges — high saturation",
+        },
+        legal: {
+            title: "Legal range",
+            x: "Frame X",
+            y: "Frame Y",
+            note: "Yellow — outside broadcast/legal luma range",
         },
         motion: {
             title: "Motion vectors",
@@ -52,7 +68,7 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     // Full-frame analysis scopes — show live video as a top-right PiP reference
-    const SCOPE_PIP = new Set(["waveform", "histogram", "vectorscope"]);
+    const SCOPE_PIP = new Set(["waveform", "rgbparade", "histogram", "vectorscope"]);
 
     const active = new Set();
     let abortController = null;

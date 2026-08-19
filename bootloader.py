@@ -1,6 +1,5 @@
 """
-Legacy browser launcher. Prefer `python desktop.py` for the native window.
-Kept for compatibility with older workflows.
+Legacy browser launcher. Prefer `npm run electron` for the native window.
 """
 
 import os

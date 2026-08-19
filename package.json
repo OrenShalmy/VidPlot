@@ -1,0 +1,59 @@
+{
+  "name": "vidplot",
+  "productName": "VidPlot",
+  "version": "1.2.0",
+  "description": "Local video frame analyzer",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "electron": "node electron/launch.js",
+    "desktop": "node electron/launch.js",
+    "dist": "node electron/check-sidecar.js && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^36.9.5",
+    "electron-builder": "^26.15.3"
+  },
+  "allowScripts": {
+    "electron@36.9.5": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "build": {
+    "appId": "com.vidplot.app",
+    "productName": "VidPlot",
+    "asar": true,
+    "forceCodeSigning": false,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/vidplot-server",
+        "to": "vidplot-server",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "icon": "static/icons/VidPlot.icns",
+      "identity": null,
+      "target": [
+        "zip"
+      ],
+      "artifactName": "VidPlot-macOS-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "static/icons/VidPlot.ico",
+      "target": [
+        "zip"
+      ],
+      "artifactName": "VidPlot-Windows-${arch}.${ext}"
+    }
+  }
+}

@@ -1,0 +1,216 @@
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { spawn } = require('child_process');
+const fs = require('fs');
+const http = require('http');
+const net = require('net');
+const path = require('path');
+
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'h264', 'h265'];
+
+let mainWindow = null;
+let serverProcess = null;
+let quitting = false;
+
+function repoRoot() {
+    return path.resolve(__dirname, '..');
+}
+
+function sidecarLaunch() {
+    if (app.isPackaged) {
+        const dir = path.join(process.resourcesPath, 'vidplot-server');
+        const command = process.platform === 'win32'
+            ? path.join(dir, 'VidPlotServer.exe')
+            : path.join(dir, 'VidPlotServer');
+        return { command, args: [], cwd: dir };
+    }
+    return {
+        command: firstExistingPython(),
+        args: [path.join(repoRoot(), 'serve_desktop.py')],
+        cwd: repoRoot(),
+    };
+}
+
+function pythonCandidates() {
+    const extra = [];
+    if (process.env.VIDPLOT_PYTHON) extra.push(process.env.VIDPLOT_PYTHON);
+    if (process.env.VIRTUAL_ENV) {
+        extra.push(
+            process.platform === 'win32'
+                ? path.join(process.env.VIRTUAL_ENV, 'Scripts', 'python.exe')
+                : path.join(process.env.VIRTUAL_ENV, 'bin', 'python')
+        );
+    }
+    const venv = path.join(repoRoot(), 'venv');
+    extra.push(
+        process.platform === 'win32'
+            ? path.join(venv, 'Scripts', 'python.exe')
+            : path.join(venv, 'bin', 'python')
+    );
+    extra.push(process.platform === 'win32' ? 'python' : 'python3', 'python');
+    return extra;
+}
+
+function firstExistingPython() {
+    for (const candidate of pythonCandidates()) {
+        if (!candidate) continue;
+        if (candidate === 'python' || candidate === 'python3') return candidate;
+        try {
+            if (fs.existsSync(candidate)) return candidate;
+        } catch {
+            /* ignore */
+        }
+    }
+    return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+function findFreePort() {
+    return new Promise((resolve, reject) => {
+        const server = net.createServer();
+        server.listen(0, '127.0.0.1', () => {
+            const { port } = server.address();
+            server.close((err) => (err ? reject(err) : resolve(port)));
+        });
+        server.on('error', reject);
+    });
+}
+
+function waitForUrl(url, timeoutMs = 20000) {
+    const deadline = Date.now() + timeoutMs;
+    return new Promise((resolve, reject) => {
+        const tryOnce = () => {
+            http
+                .get(url, (res) => {
+                    res.resume();
+                    if (res.statusCode && res.statusCode < 500) {
+                        resolve();
+                        return;
+                    }
+                    retry();
+                })
+                .on('error', retry);
+        };
+        const retry = () => {
+            if (Date.now() > deadline) {
+                reject(new Error('VidPlot Flask server did not start in time'));
+                return;
+            }
+            setTimeout(tryOnce, 150);
+        };
+        tryOnce();
+    });
+}
+
+function startFlask(port) {
+    const launch = sidecarLaunch();
+    if (app.isPackaged && !fs.existsSync(launch.command)) {
+        throw new Error(`Analysis server missing at ${launch.command}. Reinstall VidPlot.`);
+    }
+    process.stdout.write(`VidPlot server: ${launch.command}\n`);
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    serverProcess = spawn(launch.command, launch.args, {
+        cwd: launch.cwd,
+        env: {
+            ...env,
+            VIDPLOT_DESKTOP: '1',
+            VIDPLOT_PORT: String(port),
+        },
+        windowsHide: true,
+    });
+
+    serverProcess.on('error', (err) => {
+        if (quitting) return;
+        dialog.showErrorBox('VidPlot', err.message || String(err));
+        app.quit();
+    });
+
+    serverProcess.stdout.on('data', (chunk) => {
+        process.stdout.write(chunk);
+    });
+    serverProcess.stderr.on('data', (chunk) => {
+        process.stderr.write(chunk);
+    });
+    serverProcess.on('exit', (code, signal) => {
+        serverProcess = null;
+        if (!quitting && code && code !== 0) {
+            dialog.showErrorBox(
+                'VidPlot',
+                `The analysis server exited (${signal || code}). Check that Python and FFmpeg are installed.`
+            );
+            app.quit();
+        }
+    });
+}
+
+function stopFlask() {
+    if (!serverProcess) return;
+    const child = serverProcess;
+    serverProcess = null;
+    try {
+        if (process.platform === 'win32') {
+            spawn('taskkill', ['/pid', String(child.pid), '/f', '/t'], { windowsHide: true });
+        } else {
+            child.kill('SIGTERM');
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+async function createWindow(url) {
+    mainWindow = new BrowserWindow({
+        width: 1400,
+        height: 900,
+        minWidth: 960,
+        minHeight: 640,
+        backgroundColor: '#181c24',
+        title: 'VidPlot',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+        },
+    });
+
+    await mainWindow.loadURL(url);
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
+}
+
+ipcMain.handle('vidplot:open-video', async () => {
+    const parent = mainWindow || undefined;
+    const result = await dialog.showOpenDialog(parent, {
+        title: 'Choose a video to analyze',
+        properties: ['openFile'],
+        filters: [
+            { name: 'Video Files', extensions: VIDEO_EXTENSIONS },
+            { name: 'All files', extensions: ['*'] },
+        ],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+});
+
+app.whenReady().then(async () => {
+    try {
+        const port = await findFreePort();
+        const url = `http://127.0.0.1:${port}/`;
+        startFlask(port);
+        await waitForUrl(`${url}api/env`, app.isPackaged ? 60000 : 20000);
+        await createWindow(url);
+    } catch (err) {
+        dialog.showErrorBox('VidPlot', err.message || String(err));
+        app.quit();
+    }
+});
+
+app.on('before-quit', () => {
+    quitting = true;
+    stopFlask();
+});
+
+app.on('window-all-closed', () => {
+    app.quit();
+});

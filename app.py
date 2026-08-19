@@ -62,7 +62,7 @@ app = Flask(
 )
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
-# Set True by desktop.py so the UI never falls back to HTTP file upload
+# Set True by serve_desktop.py / Electron so the UI prefers native file paths
 app.config['DESKTOP_MODE'] = os.environ.get('VIDPLOT_DESKTOP', '').lower() in ('1', 'true', 'yes')
 
 
@@ -548,8 +548,10 @@ def ffmpeg_input_args(source):
 SCOPE_ORDER = (
     'oscilloscope',
     'waveform',
+    'rgbparade',
     'histogram',
     'vectorscope',
+    'legal',
     'motion',
     'qpmap',
 )
@@ -562,6 +564,10 @@ SCOPE_FILTER_CHAINS = {
         'format=yuv420p,waveform=intensity=0.1:mode=column:mirror=1:c=1:f=0:'
         'graticule=green:flags=numbers+dots:scale=0'
     ),
+    'rgbparade': (
+        'format=gbrp,waveform=filter=lowpass:components=7:display=parade:'
+        'mode=column:mirror=1:graticule=green:flags=numbers+dots:scale=0'
+    ),
     'histogram': (
         # Overlapping R/G/B levels on black (Resolve/QCTools-style “levels” look)
         'format=gbrp,histogram=display_mode=overlay:colors_mode=coloronblack:'
@@ -573,6 +579,8 @@ SCOPE_FILTER_CHAINS = {
         'graticule=green:flags=name,'
         'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
     ),
+    # Highlight pixels outside broadcast/legal luma range (approx. 16–235)
+    'legal': 'format=yuv420p,signalstats=out=brng:c=yellow',
     # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
     'motion': 'codecview=mv=pf+bf+bb',
     # Requires -export_side_data +venc_params (H.264/VP9).

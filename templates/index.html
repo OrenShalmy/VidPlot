@@ -75,12 +75,20 @@
           <button type="button" class="scope-toggle" data-scope="waveform" role="switch" aria-checked="false" aria-label="Toggle waveform"></button>
         </div>
         <div class="scope-switch">
+          <span class="scope-switch-name" title="RGB waveform parade (R, G, B side by side). Spot channel imbalance and color casts in highlights/shadows.">RGB parade</span>
+          <button type="button" class="scope-toggle" data-scope="rgbparade" role="switch" aria-checked="false" aria-label="Toggle RGB parade"></button>
+        </div>
+        <div class="scope-switch">
           <span class="scope-switch-name" title="Overlapping R/G/B level distribution (0–255). Check exposure, clipped highlights/shadows, and channel balance.">Histogram</span>
           <button type="button" class="scope-toggle" data-scope="histogram" role="switch" aria-checked="false" aria-label="Toggle histogram"></button>
         </div>
         <div class="scope-switch">
           <span class="scope-switch-name" title="Chrominance plot (U vs V). Check color balance, saturation, and skin-tone alignment.">Vectorscope</span>
           <button type="button" class="scope-toggle" data-scope="vectorscope" role="switch" aria-checked="false" aria-label="Toggle vectorscope"></button>
+        </div>
+        <div class="scope-switch">
+          <span class="scope-switch-name" title="Highlight pixels outside broadcast/legal luma range (FFmpeg signalstats brng). Yellow marks illegal values.">Legal range</span>
+          <button type="button" class="scope-toggle" data-scope="legal" role="switch" aria-checked="false" aria-label="Toggle legal range"></button>
         </div>
         <div class="scope-switch">
           <span class="scope-switch-name" title="Overlay motion vectors (P/B forward and B backward) via FFmpeg codecview. Works on codecs that export MVs (e.g. H.264); I-frames and many non-MPEG codecs show no arrows.">Motion vectors</span>

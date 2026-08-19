@@ -10,11 +10,11 @@ Local video frame analyzer for inspecting per-frame size, frame type (I/P/B), ti
 - Staged analysis: streams/properties → frame chart → QP (when available)
 - Per-frame hover: frame number, timecode, DTS, PTS, size, type, Avg QP
 - JKL shuttle, Space play/pause, `,` / `.` (or `<` / `>`) frame step, arrow keys ±1s
-- Optional desktop app via pywebview + PyInstaller
+- Desktop app: Electron window + bundled Python analysis server
 
 ## Prerequisites
 
-- Python 3.10+ recommended
+- Python 3.10+ and Node.js 20+ for development
 - [FFmpeg](https://ffmpeg.org/) (provides `ffprobe` and `ffmpeg` on your `PATH`)
 
 ### Install FFmpeg
@@ -46,6 +46,21 @@ python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 
 pip install -r requirements.txt
+npm install
+```
+
+npm 11+ may skip Electron’s binary download until you allow it:
+
+```bash
+npm install-scripts approve electron
+```
+
+If you see `Electron failed to install correctly`:
+
+```bash
+npm install-scripts approve electron
+rm -rf node_modules/electron
+npm install
 ```
 
 ## Run
@@ -53,8 +68,12 @@ pip install -r requirements.txt
 ### Desktop (recommended)
 
 ```bash
-python desktop.py
+npm run electron
 ```
+
+Uses the project `venv/` automatically. Override with `VIDPLOT_PYTHON=/path/to/python`.
+
+Open files in the **VidPlot window**. Cursor’s Simple Browser can talk to the same Flask server but has no native picker; it falls back to a normal file chooser (upload copy).
 
 ### Browser / Flask
 
@@ -66,32 +85,38 @@ Then open [http://localhost:5000](http://localhost:5000).
 
 ## Build a desktop app
 
+Packaged builds ship Electron plus a PyInstaller **VidPlotServer** sidecar (no pywebview / .NET). FFmpeg is still expected on `PATH` (or set in Configure).
+
 ### Locally
 
 ```bash
 python build_desktop.py
+npm run dist
 ```
 
-Output lands under `dist/` (platform-specific). Paths for `ffprobe` / `ffmpeg` can also be set in the in-app Configure menu.
+Output zips land in `dist-electron/`.
+
+macOS builds are **unsigned**. First launch: right-click the app → Open, or `xattr -cr /path/to/VidPlot.app`.
 
 ### CI (macOS + Windows)
 
-GitHub Actions builds desktop zips on macOS and Windows runners — no local Windows machine required.
+GitHub Actions builds desktop zips on macOS and Windows runners.
 
 - **Tag a release** (builds all platforms and attaches assets):
 
   ```bash
-  git tag v1.0.1
-  git push origin v1.0.1
+  git tag v1.2.0
+  git push vidplot v1.2.0
   ```
 
 - **Manual run:** Actions → **Build desktop** → Run workflow  
-  Optionally check “Upload build zips to a GitHub Release” and set a tag like `v1.0.1`.
+  Optionally check “Upload build zips to a GitHub Release” and set a tag like `v1.2.0`.
 
 Artifacts:
+
 - `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
-- `VidPlot-Windows-x64.zip` — Intel/AMD64 folder with `VidPlot.exe` (needs [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) on the PC; usually already present on Windows 10/11)
-- `VidPlot-Windows-arm64.zip` — Windows on ARM folder with `VidPlot.exe` (same WebView2 requirement)
+- `VidPlot-Windows-x64.zip` — Intel/AMD64 Electron app (`VidPlot.exe`)
+- `VidPlot-Windows-arm64.zip` — Windows on ARM Electron app
 
 ## Usage
 
