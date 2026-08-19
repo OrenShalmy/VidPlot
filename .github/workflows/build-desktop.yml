@@ -76,7 +76,7 @@ jobs:
         run: npx electron --version
 
       - name: Package Electron app
-        run: npx electron-builder --publish never ${{ matrix.builder_args }} --log-level=info
+        run: npx electron-builder --publish never ${{ matrix.builder_args }}
 
       - name: List packaged output
         run: |
