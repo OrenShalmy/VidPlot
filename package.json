@@ -6,6 +6,7 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "node electron/ensure-electron.js",
     "electron": "node electron/launch.js",
     "desktop": "node electron/launch.js",
     "dist": "node electron/check-sidecar.js && electron-builder --publish never"

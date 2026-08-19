@@ -5,6 +5,12 @@
  */
 const { spawn } = require('child_process');
 const path = require('path');
+const { ensureElectron } = require('./ensure-electron');
+
+if (!ensureElectron()) {
+    process.exit(1);
+}
+
 const electron = require('electron');
 
 const env = { ...process.env };
