@@ -54,7 +54,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install Python dependencies
@@ -65,6 +65,10 @@ jobs:
       - name: Build analysis sidecar
         run: python build_desktop.py
 
+      - name: Verify sidecar output
+        run: |
+          python -c "import glob; print('Sidecar candidates:', glob.glob('dist/**/VidPlotServer*', recursive=True)[:20])"
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -72,10 +76,15 @@ jobs:
         run: npx electron --version
 
       - name: Package Electron app
-        run: npx electron-builder --publish never ${{ matrix.builder_args }}
+        run: npx electron-builder --publish never ${{ matrix.builder_args }} --log-level=info
 
       - name: List packaged output
-        run: ls -lah dist-electron
+        run: |
+          node -e "const fs=require('fs'); const p='dist-electron'; if(!fs.existsSync(p)){console.error('Missing '+p); process.exit(1);} const walk=(d)=>fs.readdirSync(d).flatMap(n=>{const x=require('path').join(d,n); const s=fs.statSync(x); return s.isDirectory()?walk(x):[x];}); const z=walk(p).filter(x=>x.toLowerCase().endsWith('.zip')); console.log('Zips:', z);"
+
+      - name: Verify expected zip exists
+        run: |
+          node -e "const fs=require('fs'); const zip='dist-electron/${{ matrix.artifact }}.zip'; if(!fs.existsSync(zip)){console.error('Missing '+zip); process.exit(1);} console.log('Found', zip);"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
