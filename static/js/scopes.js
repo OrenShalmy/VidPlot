@@ -44,12 +44,6 @@ document.addEventListener("DOMContentLoaded", function () {
             y: "V / Cr (blue ← → yellow)",
             note: "Center — low saturation · Edges — high saturation",
         },
-        legal: {
-            title: "Legal range",
-            x: "Frame X",
-            y: "Frame Y",
-            note: "Yellow — outside broadcast/legal luma range",
-        },
         motion: {
             title: "Motion vectors",
             x: "Frame X",

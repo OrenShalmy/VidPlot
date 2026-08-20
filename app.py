@@ -600,7 +600,6 @@ SCOPE_ORDER = (
     'rgbparade',
     'histogram',
     'vectorscope',
-    'legal',
     'motion',
     'qpmap',
 )
@@ -628,8 +627,6 @@ SCOPE_FILTER_CHAINS = {
         'graticule=green:flags=name,'
         'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
     ),
-    # Highlight pixels outside broadcast/legal luma range (approx. 16–235)
-    'legal': 'format=yuv420p,signalstats=out=brng:c=yellow',
     # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
     'motion': 'codecview=mv=pf+bf+bb',
     # Requires -export_side_data +venc_params (H.264/VP9).
