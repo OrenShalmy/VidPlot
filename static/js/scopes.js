@@ -1,11 +1,11 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const video = document.getElementById("videoPlayer");
+    const videoEl = document.getElementById("videoPlayer");
     const stage = document.getElementById("videoStage");
     const preview = document.getElementById("scopePreview");
     const legendEl = document.getElementById("scopeLegend");
     const statusEl = document.getElementById("scopeStatus");
     const toggles = Array.from(document.querySelectorAll(".scope-toggle[data-scope]"));
-    if (!video || !stage || !preview || !toggles.length) return;
+    if (!videoEl || !stage || !preview || !toggles.length) return;
 
     const SCOPE_LEGENDS = {
         oscilloscope: {
@@ -76,6 +76,11 @@ document.addEventListener("DOMContentLoaded", function () {
     let requestToken = 0;
     let playTimer = null;
     let lastRequestKey = "";
+    let boundMedia = null;
+
+    function media() {
+        return (typeof window.vidplotGetMedia === "function" && window.vidplotGetMedia()) || videoEl;
+    }
 
     function setStatus(message, isError) {
         if (!statusEl) return;
@@ -100,10 +105,30 @@ document.addEventListener("DOMContentLoaded", function () {
     function updateScopePip(filters) {
         const names = filters || selectedFilters();
         const path = sourcePath();
-        const videoReady = path
-            && video.dataset.vidplotSource === path
-            && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-        const showPip = videoReady && names.some((name) => SCOPE_PIP.has(name));
+        const m = media();
+        const ffmpegMode = window.vidplotPreviewMode === "ffmpeg"
+            || !!(m && m._vidplotMode === "ffmpeg");
+        const canvas = document.getElementById("previewCanvas");
+        let pictureReady = false;
+        if (ffmpegMode) {
+            // Canvas JPEG preview is the picture reference for ProRes / hard codecs
+            pictureReady = !!(
+                path
+                && canvas
+                && !canvas.hidden
+                && canvas.width > 0
+                && canvas.height > 0
+                && (canvas.dataset.vidplotSource === path
+                    || videoEl.dataset.vidplotSource === path)
+            );
+        } else {
+            pictureReady = !!(
+                path
+                && videoEl.dataset.vidplotSource === path
+                && videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+            );
+        }
+        const showPip = pictureReady && names.some((name) => SCOPE_PIP.has(name));
         stage.classList.toggle("has-scope-pip", showPip);
     }
 
@@ -188,7 +213,8 @@ document.addEventListener("DOMContentLoaded", function () {
             setStatus("No source path for scopes", true);
             return;
         }
-        const time = Number(video.currentTime) || 0;
+        const m = media();
+        const time = Number(m?.currentTime) || 0;
         const key = `${path}|${filters.join(",")}|${time.toFixed(2)}`;
         if (!force && key === lastRequestKey) return;
         lastRequestKey = key;
@@ -237,8 +263,34 @@ document.addEventListener("DOMContentLoaded", function () {
         if (playTimer) return;
         playTimer = setTimeout(() => {
             playTimer = null;
-            if (!video.paused && active.size) refreshScopes(false);
+            const m = media();
+            if (m && !m.paused && active.size) refreshScopes(false);
         }, 350);
+    }
+
+    function onSeeked() {
+        if (active.size) refreshScopes(true);
+    }
+    function onTimeUpdate() {
+        const m = media();
+        if (active.size && m && !m.paused) schedulePlayRefresh();
+    }
+    function onPause() {
+        if (active.size) refreshScopes(true);
+    }
+
+    function bindMediaListeners() {
+        const m = media();
+        if (!m || m === boundMedia) return;
+        if (boundMedia) {
+            boundMedia.removeEventListener("seeked", onSeeked);
+            boundMedia.removeEventListener("timeupdate", onTimeUpdate);
+            boundMedia.removeEventListener("pause", onPause);
+        }
+        boundMedia = m;
+        m.addEventListener("seeked", onSeeked);
+        m.addEventListener("timeupdate", onTimeUpdate);
+        m.addEventListener("pause", onPause);
     }
 
     toggles.forEach((btn) => {
@@ -260,15 +312,8 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    video.addEventListener("seeked", () => {
-        if (active.size) refreshScopes(true);
-    });
-    video.addEventListener("timeupdate", () => {
-        if (active.size && !video.paused) schedulePlayRefresh();
-    });
-    video.addEventListener("pause", () => {
-        if (active.size) refreshScopes(true);
-    });
+    // Default bind to native video; rebind when adapter activates
+    bindMediaListeners();
 
     window.vidplotResetScopes = function () {
         active.clear();
@@ -277,7 +322,8 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     window.vidplotOnSourceReady = function (path) {
         lastRequestKey = "";
-        if (path && video) video.dataset.vidplotSource = path;
+        if (path && videoEl) videoEl.dataset.vidplotSource = path;
+        bindMediaListeners();
         if (active.size) {
             updateScopePip(selectedFilters());
             refreshScopes(true);
@@ -287,7 +333,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (active.size) refreshScopes(true);
     };
 
-    video.addEventListener("loadeddata", () => {
+    videoEl.addEventListener("loadeddata", () => {
         if (active.size) updateScopePip(selectedFilters());
     });
 

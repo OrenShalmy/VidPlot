@@ -280,11 +280,13 @@ body.panel-side-collapsed #videoWrap {
   min-width: 0;
 }
 
-body.panel-graph-collapsed #videoPlayer {
+body.panel-graph-collapsed #videoPlayer,
+body.panel-graph-collapsed #previewCanvas {
   max-height: none;
 }
 
-body.is-loaded:not(.panel-graph-collapsed) #videoPlayer {
+body.is-loaded:not(.panel-graph-collapsed) #videoPlayer,
+body.is-loaded:not(.panel-graph-collapsed) #previewCanvas {
   max-height: none;
 }
 
@@ -310,7 +312,8 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   overflow: hidden;
 }
 
-#videoPlayer {
+#videoPlayer,
+#previewCanvas {
   width: auto;
   max-width: 100%;
   height: 100%;
@@ -324,7 +327,12 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   cursor: pointer;
 }
 
-#videoStage.has-scopes #videoPlayer {
+#previewCanvas {
+  image-rendering: auto;
+}
+
+#videoStage.has-scopes #videoPlayer,
+#videoStage.has-scopes #previewCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -335,7 +343,8 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
 }
 
 /* Live frame reference for waveform / histogram / vectorscope */
-#videoStage.has-scopes.has-scope-pip #videoPlayer {
+#videoStage.has-scopes.has-scope-pip #videoPlayer,
+#videoStage.has-scopes.has-scope-pip #previewCanvas {
   inset: auto;
   top: 12px;
   right: 12px;
@@ -1520,11 +1529,13 @@ body:has(#sideMenu.visible) #workspace {
     min-width: 200px;
   }
 
-  #videoPlayer {
+  #videoPlayer,
+  #previewCanvas {
     max-height: calc(42vh - 40px);
   }
 
-  body.panel-graph-collapsed #videoPlayer {
+  body.panel-graph-collapsed #videoPlayer,
+  body.panel-graph-collapsed #previewCanvas {
     max-height: none;
   }
 
@@ -1575,12 +1586,14 @@ body:has(#sideMenu.visible) #workspace {
     flex: 1 1 auto;
   }
 
-  #videoPlayer {
+  #videoPlayer,
+  #previewCanvas {
     width: 100%;
     max-height: 28vh;
   }
 
-  body.panel-graph-collapsed #videoPlayer {
+  body.panel-graph-collapsed #videoPlayer,
+  body.panel-graph-collapsed #previewCanvas {
     max-height: none;
   }
 

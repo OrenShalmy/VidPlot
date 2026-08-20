@@ -379,17 +379,92 @@ document.addEventListener("DOMContentLoaded", function () {
         if (typeof window.vidplotResetScopes === "function") {
             window.vidplotResetScopes();
         }
-        if (videoSource && result.video_url) {
-            videoSource.src = result.video_url;
+
+        const duration = Number(result.duration)
+            || parseFloat(jsonData?.format?.duration)
+            || 0;
+        const preferFfmpeg = result.preview_hint === "ffmpeg";
+
+        function enablePreview(mode) {
+            if (typeof window.vidplotEnablePreviewMode !== "function") return;
+            window.vidplotEnablePreviewMode({
+                mode,
+                path: sourcePath,
+                duration,
+                jsonData,
+            });
+            if (typeof window.vidplotBindPlayerMedia === "function") {
+                window.vidplotBindPlayerMedia();
+            }
         }
-        if (videoPlayer) {
-            videoPlayer.style.display = "block";
-            videoPlayer.dataset.vidplotSource = sourcePath;
-            videoPlayer.load();
+
+        function notifySourceReady() {
+            if (generation !== analysisGeneration) return;
+            if (typeof window.vidplotOnSourceReady === "function") {
+                window.vidplotOnSourceReady(sourcePath);
+            }
         }
-        if (result.playback_proxy) {
-            setAnalysisStatus("Preparing ProRes preview…");
+
+        if (preferFfmpeg) {
+            if (videoPlayer) {
+                videoPlayer.dataset.vidplotSource = sourcePath;
+            }
+            enablePreview("ffmpeg");
+            notifySourceReady();
+        } else {
+            if (videoSource && result.video_url) {
+                videoSource.src = result.video_url;
+            }
+            if (videoPlayer) {
+                videoPlayer.hidden = false;
+                videoPlayer.style.display = "block";
+                videoPlayer.dataset.vidplotSource = sourcePath;
+                videoPlayer.load();
+            }
+            enablePreview("native");
+
+            let settled = false;
+            const settleNative = () => {
+                if (settled || generation !== analysisGeneration) return;
+                settled = true;
+                notifySourceReady();
+            };
+            const fallBackToFfmpeg = () => {
+                if (settled || generation !== analysisGeneration) return;
+                settled = true;
+                enablePreview("ffmpeg");
+                notifySourceReady();
+                // Chart may already be bound to <video> — rebind transport
+                if (
+                    window.vidplotJsonData?.frames?.length
+                    && typeof setupPlotlyChart === "function"
+                    && typeof Plotly !== "undefined"
+                ) {
+                    try {
+                        setupPlotlyChart(window.vidplotJsonData);
+                    } catch (err) {
+                        console.error(err);
+                    }
+                }
+            };
+            if (videoPlayer) {
+                videoPlayer.addEventListener("canplay", settleNative, { once: true });
+                videoPlayer.addEventListener("loadeddata", settleNative, { once: true });
+                videoPlayer.addEventListener("error", fallBackToFfmpeg, { once: true });
+                setTimeout(() => {
+                    if (settled || generation !== analysisGeneration) return;
+                    // No usable frame after a short wait — browser likely cannot decode
+                    if (!videoPlayer.videoWidth || videoPlayer.error) {
+                        fallBackToFfmpeg();
+                    } else {
+                        settleNative();
+                    }
+                }, 2500);
+            } else {
+                fallBackToFfmpeg();
+            }
         }
+
         if (mediaInfo) mediaInfo.style.display = "block";
         showWorkspace();
         try {
@@ -403,23 +478,6 @@ document.addEventListener("DOMContentLoaded", function () {
         resetProgress();
 
         const path = sourcePath;
-        const onVideoReady = () => {
-            if (generation !== analysisGeneration) return;
-            if (videoPlayer?.dataset.vidplotSource !== sourcePath) return;
-            if (result.playback_proxy) setAnalysisStatus("");
-            if (typeof window.vidplotOnSourceReady === "function") {
-                window.vidplotOnSourceReady(sourcePath);
-            }
-        };
-        if (videoPlayer) {
-            videoPlayer.addEventListener("loadeddata", onVideoReady, { once: true });
-            videoPlayer.addEventListener("error", () => {
-                if (generation !== analysisGeneration) return;
-                if (result.playback_proxy) {
-                    setAnalysisStatus("Preview loading — scopes still work");
-                }
-            }, { once: true });
-        }
         if (result.frames_pending || jsonData?.frames_pending || !(jsonData?.frames || []).length) {
             requestFramesAnalysis(path, jsonData, generation);
         } else if (result.qp_pending || jsonData?.qp_pending) {

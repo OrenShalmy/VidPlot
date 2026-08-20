@@ -12,6 +12,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
   <script src="{{ url_for('static', filename='js/player.js') }}"></script>
   <script src="{{ url_for('static', filename='js/panels.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
@@ -61,6 +62,7 @@
           <source id="videoSource" src="" type="video/mp4">
           Your browser does not support the video tag.
         </video>
+        <canvas id="previewCanvas" hidden aria-label="Video preview"></canvas>
         <img id="scopePreview" alt="" hidden>
         <div id="scopeLegend" class="scope-legend" hidden></div>
         <div id="scopeStatus" class="scope-status" hidden></div>

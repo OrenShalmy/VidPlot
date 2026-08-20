@@ -108,8 +108,8 @@ function getVidplotTransport() {
             }
             t.onPlay = null;
             t.onPause = null;
-            t.api = null;
-            t.video = null;
+            // Keep transport.api across chart re-inits (preview adapter)
+            t.video = t.api || null;
             t.suppressPauseSideEffects = false;
         },
     };
@@ -149,6 +149,7 @@ function releaseVidplotShortcutFocus() {
     if (
         isVidplotTypingTarget(el)
         || el.id === 'seekBar'
+        || el.id === 'timeDisplayMode'
         || (el.closest && (el.closest('#frameChart') || el.closest('.js-plotly-plot')))
     ) {
         el.blur();
@@ -285,17 +286,27 @@ function setupPlotlyChart(jsonData) {
     }
     let seekGeneration = 0;
 
+    function effectiveDuration() {
+        if (Number.isFinite(duration) && duration > 0) return duration;
+        const vd = Number(videoPlayer.duration);
+        if (Number.isFinite(vd) && vd > 0) return vd;
+        return Infinity;
+    }
+
     function wakeMediaForSeek() {
-        if (!transport.mediaNeedsWake || !videoPlayer.paused) {
+        videoPlayer = media();
+        transport.video = videoPlayer;
+        if (isFfmpegPreview() || !transport.mediaNeedsWake) {
             transport.mediaNeedsWake = false;
             return Promise.resolve();
         }
         transport.mediaNeedsWake = false;
-        // WKWebView often ignores currentTime after app background until play() runs
+        // Chromium / WKWebView ignore currentTime after app background until play() runs
+        const wasPaused = videoPlayer.paused;
         transport.suppressPauseSideEffects = true;
         const playAttempt = videoPlayer.play();
         const settle = () => {
-            videoPlayer.pause();
+            if (wasPaused) videoPlayer.pause();
             transport.suppressPauseSideEffects = false;
         };
         if (playAttempt && typeof playAttempt.then === 'function') {
@@ -305,37 +316,55 @@ function setupPlotlyChart(jsonData) {
         return Promise.resolve();
     }
 
+    function applyDirectSeek(clamped, token, pauseAfter) {
+        if (token !== seekGeneration) return;
+        videoPlayer = media();
+        transport.video = videoPlayer;
+        if (pauseAfter) {
+            transport.suppressPauseSideEffects = true;
+            videoPlayer.pause();
+            transport.suppressPauseSideEffects = false;
+        }
+        const onSeeked = function() {
+            videoPlayer.removeEventListener('seeked', onSeeked);
+            if (token !== seekGeneration) return;
+            updateCurrentFrameMarker(clamped);
+        };
+        videoPlayer.addEventListener('seeked', onSeeked);
+        if (typeof videoPlayer.seekTo === 'function') {
+            videoPlayer.seekTo(clamped, true);
+        } else if (typeof videoPlayer.fastSeek === 'function') {
+            try {
+                videoPlayer.fastSeek(clamped);
+            } catch (_) {
+                videoPlayer.currentTime = clamped;
+            }
+        } else {
+            videoPlayer.currentTime = clamped;
+        }
+        updateCurrentFrameMarker(clamped);
+    }
+
     function seekToTime(time, pauseAfter) {
-        const clamped = Math.max(0, Math.min(duration, time));
+        const maxT = effectiveDuration();
+        const clamped = Math.max(0, Math.min(maxT, time));
         const token = ++seekGeneration;
         const applySeek = () => {
             if (token !== seekGeneration) return;
-            if (pauseAfter) {
-                transport.suppressPauseSideEffects = true;
-                videoPlayer.pause();
-                transport.suppressPauseSideEffects = false;
-            }
-            const onSeeked = function() {
-                videoPlayer.removeEventListener('seeked', onSeeked);
-                if (token !== seekGeneration) return;
-                updateCurrentFrameMarker(clamped);
-            };
-            videoPlayer.addEventListener('seeked', onSeeked);
-            videoPlayer.currentTime = clamped;
-            // Some engines skip 'seeked' for tiny moves — keep marker honest
-            updateCurrentFrameMarker(clamped);
-            // If the seek was ignored (common after OS focus return), nudge once more
+            applyDirectSeek(clamped, token, pauseAfter);
+            if (isFfmpegPreview()) return;
+            // If the seek was ignored (common after OS focus return), wake and retry
             requestAnimationFrame(() => {
                 if (token !== seekGeneration) return;
                 if (Math.abs((videoPlayer.currentTime || 0) - clamped) <= 0.08) return;
                 transport.mediaNeedsWake = true;
                 wakeMediaForSeek().then(() => {
                     if (token !== seekGeneration) return;
-                    videoPlayer.currentTime = clamped;
-                    updateCurrentFrameMarker(clamped);
+                    applyDirectSeek(clamped, token, pauseAfter);
                 });
             });
         };
+        releaseVidplotShortcutFocus();
         wakeMediaForSeek().then(applySeek);
     }
     function stepFrame(delta) {
@@ -368,15 +397,25 @@ function setupPlotlyChart(jsonData) {
     let currentZoomLevel = 1;
     let layout = null;
     const currentFrameShapeId = 'current-frame-marker';
-    const videoPlayer = document.getElementById('videoPlayer');
-    if (!videoPlayer) {
+    const videoEl = document.getElementById('videoPlayer');
+    if (!videoEl) {
         console.error('Required DOM elements not found.');
         return;
     }
     const transport = getVidplotTransport();
     // Tear down prior chart session (listeners + reverse RAF) before rebinding
     transport.teardown();
+    function media() {
+        return (typeof window.vidplotGetMedia === 'function' && window.vidplotGetMedia())
+            || transport.api
+            || videoEl;
+    }
+    let videoPlayer = media();
     transport.video = videoPlayer;
+    function isFfmpegPreview() {
+        return window.vidplotPreviewMode === 'ffmpeg'
+            || !!(media() && media()._vidplotMode === 'ffmpeg');
+    }
     const duration = parseFloat(jsonData.format.duration);
     const allFrames = jsonData.frames.map(f => ({
         ...f,
@@ -400,12 +439,15 @@ function setupPlotlyChart(jsonData) {
     function playBackwardAt(speed) {
         const rate = Math.max(1, Math.min(4, speed));
         stopReversePlayback();
+        videoPlayer = media();
+        transport.video = videoPlayer;
         // pause() fires a 'pause' listener that would clear shuttleRate before reverse starts
         transport.suppressPauseSideEffects = true;
         videoPlayer.pause();
         transport.suppressPauseSideEffects = false;
         let lastTs = performance.now();
         function tick(now) {
+            videoPlayer = media();
             // Ignore stale RAF from a previous chart/video session
             if (transport.video !== videoPlayer || transport.shuttleRate >= 0) {
                 transport.reverseRafId = null;
@@ -429,6 +471,8 @@ function setupPlotlyChart(jsonData) {
     }
 
     function applyShuttle(rate) {
+        videoPlayer = media();
+        transport.video = videoPlayer;
         const next = Math.max(-4, Math.min(4, rate | 0));
         transport.shuttleRate = next;
         if (next === 0) {
@@ -438,6 +482,13 @@ function setupPlotlyChart(jsonData) {
             return;
         }
         if (next > 0) {
+            stopReversePlayback();
+            videoPlayer.playbackRate = next;
+            videoPlayer.play().catch(() => {});
+            return;
+        }
+        // FFmpeg canvas adapter supports negative playbackRate in its play loop
+        if (isFfmpegPreview()) {
             stopReversePlayback();
             videoPlayer.playbackRate = next;
             videoPlayer.play().catch(() => {});
@@ -686,8 +737,7 @@ function setupPlotlyChart(jsonData) {
         const t = Math.max(0, Math.min(duration, Number(clickedTime)));
         if (!Number.isFinite(t)) return;
         if (transport.shuttleRate < 0) pausePlayback();
-        videoPlayer.currentTime = t;
-        syncPlayheadView(t, true);
+        seekToTime(t, true);
     }
 
     // --- Plotly Chart Init ---
@@ -763,14 +813,24 @@ function setupPlotlyChart(jsonData) {
     };
 
     // --- Video/Marker Sync ---
-    videoPlayer.ontimeupdate = function() {
+    function onMediaTimeUpdate() {
         if (transport.reverseRafId !== null) return;
         syncPlayheadView(videoPlayer.currentTime, false);
-    };
-    videoPlayer.onended = function() {
+    }
+    if (typeof videoPlayer.addEventListener === 'function') {
+        videoPlayer.addEventListener('timeupdate', onMediaTimeUpdate);
+    } else {
+        videoPlayer.ontimeupdate = onMediaTimeUpdate;
+    }
+    function onMediaEnded() {
         transport.shuttleRate = 0;
         videoPlayer.playbackRate = 1;
-    };
+    }
+    if (typeof videoPlayer.addEventListener === 'function') {
+        videoPlayer.addEventListener('ended', onMediaEnded);
+    } else {
+        videoPlayer.onended = onMediaEnded;
+    }
 
     transport.onPlay = () => {
         if (transport.video !== videoPlayer) return;
@@ -792,7 +852,6 @@ function setupPlotlyChart(jsonData) {
     function handleKeydown(e) {
         // Guard against duplicate delivery if anything else re-dispatches
         if (e._vidplotHandled || e.metaKey || e.ctrlKey || e.altKey) return;
-        if (isVidplotTypingTarget(document.activeElement)) return;
 
         const key = e.key;
         const code = e.code || '';
@@ -808,6 +867,8 @@ function setupPlotlyChart(jsonData) {
             || lower === 'j' || lower === 'k' || lower === 'l'
             || key === '+' || key === '=' || key === '-';
         if (!isTransport) return;
+        releaseVidplotShortcutFocus();
+        if (isVidplotTypingTarget(document.activeElement)) return;
         // Space/K must not auto-repeat (would toggle/pause-spam); J/L and frame step may
         if (e.repeat && (key === ' ' || key === 'Spacebar' || code === 'Space' || lower === 'k')) return;
 
@@ -815,11 +876,6 @@ function setupPlotlyChart(jsonData) {
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
-        // Seek/frame keys are often swallowed by focused range/Plotly after OS focus return
-        if (isArrowRight || isArrowLeft || isFrameForward || isFrameBack) {
-            releaseVidplotShortcutFocus();
-        }
-
         try {
             if (isArrowRight) {
                 if (transport.shuttleRate < 0) pausePlayback();

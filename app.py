@@ -22,11 +22,12 @@ QP_HEADER_GAP_RE = re.compile(r'\d\s{3,}\d')
 # Currently opened source video (original path; not copied)
 current_source_path = None
 
-PRORES_CODECS = frozenset({
+# Codecs Chromium typically cannot play in <video> — use ffmpeg→canvas preview
+HARD_PREVIEW_CODECS = frozenset({
     'prores', 'prores_aw', 'prores_ks', 'prores_lt', 'prores_hq',
     'prores_4444', 'prores_xq', 'prores_vlog',
+    'dnxhd', 'dnxhr', 'v210', 'rawvideo', 'yuv4', 'wrapped_avframe',
 })
-PROXY_PLAYBACK_CODECS = PRORES_CODECS | frozenset({'dnxhd', 'dnxhr', 'v210', 'rawvideo'})
 
 
 def primary_video_codec(json_data):
@@ -36,12 +37,12 @@ def primary_video_codec(json_data):
     return ''
 
 
-def needs_playback_proxy(codec):
+def preview_hint_for_codec(codec):
     if not codec:
-        return False
-    if codec in PROXY_PLAYBACK_CODECS or codec.startswith('prores'):
-        return True
-    return False
+        return 'native'
+    if codec in HARD_PREVIEW_CODECS or codec.startswith('prores') or codec.startswith('yuv'):
+        return 'ffmpeg'
+    return 'native'
 
 
 def media_cache_key(video_path):
@@ -54,18 +55,6 @@ def media_cache_key(video_path):
     except OSError:
         raw = video_path
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
-
-
-def playback_needs_proxy(video_path):
-    _, json_path = analysis_json_paths(video_path)
-    if os.path.isfile(json_path):
-        try:
-            with open(json_path, 'r', encoding='utf-8') as handle:
-                data = json.load(handle)
-            return needs_playback_proxy(primary_video_codec(data))
-        except (OSError, json.JSONDecodeError):
-            pass
-    return False
 
 
 def local_video_playback_url(video_path):
@@ -521,7 +510,7 @@ def analyze_video_file(video_path):
     duration = float(json_data.get('format', {}).get('duration', 0) or 0)
     # Unique ?v= per file so Chromium does not reuse a cached /media/source clip.
     video_url = video_path if remote else local_video_playback_url(video_path)
-    playback_proxy = needs_playback_proxy(primary_video_codec(json_data))
+    preview_hint = preview_hint_for_codec(primary_video_codec(json_data))
 
     return {
         'message': 'File opened successfully',
@@ -531,7 +520,7 @@ def analyze_video_file(video_path):
         'filename': filename,
         'source_path': video_path,
         'is_remote': remote,
-        'playback_proxy': playback_proxy,
+        'preview_hint': preview_hint,
         'status': 'opened',
         'frames_pending': True,
         'qp_pending': ffmpeg_available,
@@ -697,6 +686,41 @@ def build_scope_filter_complex(filters, preview_width=960):
     return ';'.join(parts), names
 
 
+def render_preview_jpeg(video_path, time_sec, max_width=1920):
+    """Seek to time_sec and render one JPEG frame for canvas preview."""
+    video_path = validate_video_path(video_path)
+    config = load_config()
+    ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
+    try:
+        t = max(0.0, float(time_sec))
+    except (TypeError, ValueError):
+        t = 0.0
+    try:
+        width = max(160, min(3840, int(max_width or 1920)))
+    except (TypeError, ValueError):
+        width = 1920
+    cmd = [
+        ffmpeg_bin,
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-ss', f'{t:.3f}',
+        *ffmpeg_input_args(video_path),
+        '-i', video_path,
+        '-an',
+        '-vf', f'scale=min({width}\\,iw):-2',
+        '-frames:v', '1',
+        '-f', 'image2pipe',
+        '-vcodec', 'mjpeg',
+        '-q:v', '3',
+        'pipe:1',
+    ]
+    proc = subprocess.run(cmd, capture_output=True)
+    if proc.returncode != 0 or not proc.stdout:
+        err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
+        raise ValueError(err or 'Preview frame failed')
+    return proc.stdout
+
+
 def render_scope_jpeg(video_path, time_sec, filters):
     """Seek to time_sec and render selected FFmpeg scope filters as one JPEG."""
     video_path = validate_video_path(video_path)
@@ -808,51 +832,7 @@ def serve_source():
     if token != expected:
         abort(404)
 
-    if playback_needs_proxy(current_source_path):
-        return no_store_video_response(stream_playback_proxy(current_source_path))
-
     return no_store_video_response(send_file(current_source_path))
-
-
-def stream_playback_proxy(video_path):
-    """H.264 fragmented MP4 for codecs the browser cannot decode (e.g. ProRes)."""
-    config = load_config()
-    ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
-    cmd = [
-        ffmpeg_bin,
-        '-hide_banner',
-        '-loglevel', 'error',
-        *ffmpeg_input_args(video_path),
-        '-i', video_path,
-        '-an',
-        '-vf', 'scale=min(1920\\,iw):-2',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '20',
-        '-pix_fmt', 'yuv420p',
-        '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-        '-f', 'mp4',
-        'pipe:1',
-    ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    def generate():
-        try:
-            while True:
-                chunk = proc.stdout.read(65536)
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait()
-
-    return Response(
-        generate(),
-        mimetype='video/mp4',
-        headers={'Cache-Control': 'no-store'},
-    )
 
 
 @app.route('/media/logs/<path:filename>')
@@ -972,6 +952,26 @@ def analyze_qp_route():
     except subprocess.CalledProcessError as e:
         details = friendly_ffprobe_error(e.stderr if e.stderr else str(e))
         return jsonify({'error': 'QP analysis failed', 'details': details}), 500
+
+
+@app.route('/api/preview-frame', methods=['POST'])
+def preview_frame_route():
+    """Single JPEG frame at a timestamp for ffmpeg→canvas preview."""
+    data = request.get_json(silent=True) or {}
+    path = data.get('path') or current_source_path
+    time_sec = data.get('time', 0)
+    width = data.get('width', 1920)
+    try:
+        jpeg = render_preview_jpeg(path, time_sec, max_width=width)
+        response = Response(jpeg, mimetype='image/jpeg')
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 400
+    except ValueError as e:
+        return jsonify({'error': str(e), 'details': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': 'Preview frame failed', 'details': str(e)}), 500
 
 
 @app.route('/api/scopes', methods=['POST'])

@@ -1,14 +1,18 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const video = document.getElementById("videoPlayer");
+    const videoEl = document.getElementById("videoPlayer");
     const playPauseBtn = document.getElementById("playPauseBtn");
     const seekBar = document.getElementById("seekBar");
     const playerTime = document.getElementById("playerTime");
     const timeDisplayMode = document.getElementById("timeDisplayMode");
-    if (!video || !playPauseBtn || !seekBar || !playerTime) return;
+    if (!videoEl || !playPauseBtn || !seekBar || !playerTime) return;
 
     let seeking = false;
     const TIME_MODES = ["seconds", "timecode", "timestamp", "frames"];
     const TIME_MODE_KEY = "vidplotTimeDisplayMode";
+
+    function media() {
+        return (typeof window.vidplotGetMedia === "function" && window.vidplotGetMedia()) || videoEl;
+    }
 
     function loadTimeMode() {
         const saved = localStorage.getItem(TIME_MODE_KEY);
@@ -139,7 +143,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updatePlayState() {
-        playPauseBtn.classList.toggle("is-playing", !video.paused && !video.ended);
+        const m = media();
+        playPauseBtn.classList.toggle("is-playing", m && !m.paused && !m.ended);
     }
 
     function updateSeekFill(current, duration) {
@@ -149,8 +154,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateTimeUI() {
-        const duration = isFinite(video.duration) ? video.duration : 0;
-        const current = video.currentTime || 0;
+        const m = media();
+        if (!m) return;
+        const duration = isFinite(m.duration) ? m.duration
+            : (parseFloat(window.vidplotJsonData?.format?.duration) || 0);
+        const current = m.currentTime || 0;
         if (!seeking && duration > 0) {
             seekBar.max = String(duration);
             seekBar.value = String(current);
@@ -160,10 +168,12 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function togglePlay() {
-        if (video.paused || video.ended) {
-            video.play();
+        const m = media();
+        if (!m) return;
+        if (m.paused || m.ended) {
+            m.play();
         } else {
-            video.pause();
+            m.pause();
         }
     }
 
@@ -172,17 +182,43 @@ document.addEventListener("DOMContentLoaded", function () {
         togglePlay();
     });
 
-    video.addEventListener("click", () => {
+    videoEl.addEventListener("click", () => {
         togglePlay();
     });
+    const canvas = document.getElementById("previewCanvas");
+    if (canvas) {
+        canvas.addEventListener("click", () => {
+            togglePlay();
+        });
+    }
 
-    video.addEventListener("play", updatePlayState);
-    video.addEventListener("pause", updatePlayState);
-    video.addEventListener("ended", updatePlayState);
-    video.addEventListener("timeupdate", updateTimeUI);
-    video.addEventListener("loadedmetadata", updateTimeUI);
-    video.addEventListener("durationchange", updateTimeUI);
-    video.addEventListener("seeked", updateTimeUI);
+    function bindMediaEvents() {
+        const m = media();
+        if (!m || m._vidplotPlayerBound) return;
+        m._vidplotPlayerBound = true;
+        m.addEventListener("play", updatePlayState);
+        m.addEventListener("pause", updatePlayState);
+        m.addEventListener("ended", updatePlayState);
+        m.addEventListener("timeupdate", updateTimeUI);
+        m.addEventListener("loadedmetadata", updateTimeUI);
+        m.addEventListener("durationchange", updateTimeUI);
+        m.addEventListener("seeked", updateTimeUI);
+    }
+
+    // Native video always present; also rebind when adapter swaps in
+    videoEl.addEventListener("play", updatePlayState);
+    videoEl.addEventListener("pause", updatePlayState);
+    videoEl.addEventListener("ended", updatePlayState);
+    videoEl.addEventListener("timeupdate", updateTimeUI);
+    videoEl.addEventListener("loadedmetadata", updateTimeUI);
+    videoEl.addEventListener("durationchange", updateTimeUI);
+    videoEl.addEventListener("seeked", updateTimeUI);
+
+    window.vidplotBindPlayerMedia = function () {
+        bindMediaEvents();
+        updatePlayState();
+        updateTimeUI();
+    };
 
     seekBar.addEventListener("pointerdown", () => {
         seeking = true;
@@ -194,8 +230,16 @@ document.addEventListener("DOMContentLoaded", function () {
     seekBar.addEventListener("input", () => {
         const t = parseFloat(seekBar.value);
         if (!isFinite(t)) return;
-        video.currentTime = t;
-        const duration = video.duration || 0;
+        const m = media();
+        if (!m) return;
+        if (typeof m.seekTo === "function") m.seekTo(t, true);
+        else if (typeof m.fastSeek === "function") {
+            try { m.fastSeek(t); } catch (_) { m.currentTime = t; }
+        } else {
+            m.currentTime = t;
+        }
+        const duration = isFinite(m.duration) ? m.duration
+            : (parseFloat(window.vidplotJsonData?.format?.duration) || 0);
         updateSeekFill(t, duration);
         playerTime.textContent = formatPosition(t, duration);
     });
