@@ -55,108 +55,112 @@
 </div>
 
 <main id="workspace">
-  <section id="videoSection">
-    <div id="videoWrap">
-      <div id="videoStage">
-        <video id="videoPlayer">
-          <source id="videoSource" src="" type="video/mp4">
-          Your browser does not support the video tag.
-        </video>
-        <canvas id="previewCanvas" hidden aria-label="Video preview"></canvas>
-        <img id="scopePreview" alt="" hidden>
-        <div id="scopeLegend" class="scope-legend" hidden></div>
-        <div id="scopeStatus" class="scope-status" hidden></div>
-      </div>
-      <div id="scopeToggles" class="scope-toggles" role="toolbar" aria-label="Video analyzers">
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="2D trace of levels along a line in the frame. Useful for spotting luma/chroma swings and timing issues.">Oscilloscope</span>
-          <button type="button" class="scope-toggle" data-scope="oscilloscope" role="switch" aria-checked="false" aria-label="Toggle oscilloscope"></button>
+  <div id="mainColumn">
+    <section id="videoSection">
+      <div id="videoWrap">
+        <div id="videoStage">
+          <video id="videoPlayer">
+            <source id="videoSource" src="" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+          <canvas id="previewCanvas" hidden aria-label="Video preview"></canvas>
+          <img id="scopePreview" alt="" hidden>
+          <div id="scopeLegend" class="scope-legend" hidden></div>
+          <div id="scopeStatus" class="scope-status" hidden></div>
         </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="Pixel levels across each column (luma by default). Check exposure, crushed blacks, and clipped highlights.">Waveform</span>
-          <button type="button" class="scope-toggle" data-scope="waveform" role="switch" aria-checked="false" aria-label="Toggle waveform"></button>
+        <div id="scopeToggles" class="scope-toggles" role="toolbar" aria-label="Video analyzers">
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="2D trace of levels along a line in the frame. Useful for spotting luma/chroma swings and timing issues.">Oscilloscope</span>
+            <button type="button" class="scope-toggle" data-scope="oscilloscope" role="switch" aria-checked="false" aria-label="Toggle oscilloscope"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="Pixel levels across each column (luma by default). Check exposure, crushed blacks, and clipped highlights.">Waveform</span>
+            <button type="button" class="scope-toggle" data-scope="waveform" role="switch" aria-checked="false" aria-label="Toggle waveform"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="RGB waveform parade (R, G, B side by side). Spot channel imbalance and color casts in highlights/shadows.">RGB parade</span>
+            <button type="button" class="scope-toggle" data-scope="rgbparade" role="switch" aria-checked="false" aria-label="Toggle RGB parade"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="Overlapping R/G/B level distribution (0–255). Check exposure, clipped highlights/shadows, and channel balance.">Histogram</span>
+            <button type="button" class="scope-toggle" data-scope="histogram" role="switch" aria-checked="false" aria-label="Toggle histogram"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="Chrominance plot (U vs V). Check color balance, saturation, and skin-tone alignment.">Vectorscope</span>
+            <button type="button" class="scope-toggle" data-scope="vectorscope" role="switch" aria-checked="false" aria-label="Toggle vectorscope"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="Overlay motion vectors (P/B forward and B backward) via FFmpeg codecview. Works on codecs that export MVs (e.g. H.264); I-frames and many non-MPEG codecs show no arrows.">Motion vectors</span>
+            <button type="button" class="scope-toggle" data-scope="motion" role="switch" aria-checked="false" aria-label="Toggle motion vectors"></button>
+          </div>
+          <div class="scope-switch">
+            <span class="scope-switch-name" title="Per-macroblock QP mapped into chroma (H.264/VP9 via codecview=qp), with a fixed 16×16 MB grid on luma. QP tint changes between frames; grid geometry does not.">QP map</span>
+            <button type="button" class="scope-toggle" data-scope="qpmap" role="switch" aria-checked="false" aria-label="Toggle QP map"></button>
+          </div>
         </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="RGB waveform parade (R, G, B side by side). Spot channel imbalance and color casts in highlights/shadows.">RGB parade</span>
-          <button type="button" class="scope-toggle" data-scope="rgbparade" role="switch" aria-checked="false" aria-label="Toggle RGB parade"></button>
-        </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="Overlapping R/G/B level distribution (0–255). Check exposure, clipped highlights/shadows, and channel balance.">Histogram</span>
-          <button type="button" class="scope-toggle" data-scope="histogram" role="switch" aria-checked="false" aria-label="Toggle histogram"></button>
-        </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="Chrominance plot (U vs V). Check color balance, saturation, and skin-tone alignment.">Vectorscope</span>
-          <button type="button" class="scope-toggle" data-scope="vectorscope" role="switch" aria-checked="false" aria-label="Toggle vectorscope"></button>
-        </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="Overlay motion vectors (P/B forward and B backward) via FFmpeg codecview. Works on codecs that export MVs (e.g. H.264); I-frames and many non-MPEG codecs show no arrows.">Motion vectors</span>
-          <button type="button" class="scope-toggle" data-scope="motion" role="switch" aria-checked="false" aria-label="Toggle motion vectors"></button>
-        </div>
-        <div class="scope-switch">
-          <span class="scope-switch-name" title="Per-macroblock QP mapped into chroma (H.264/VP9 via codecview=qp), with a fixed 16×16 MB grid on luma. QP tint changes between frames; grid geometry does not.">QP map</span>
-          <button type="button" class="scope-toggle" data-scope="qpmap" role="switch" aria-checked="false" aria-label="Toggle QP map"></button>
-        </div>
-      </div>
-    </div>
-    <div id="sideRailSplitter" class="panel-splitter panel-splitter-v" role="separator" aria-orientation="vertical" aria-label="Resize properties panel" tabindex="0"></div>
-    <aside id="sideRail" aria-label="Tracks and properties">
-      <div class="panel-side-bar">
-        <span class="panel-side-title">Tracks &amp; properties</span>
-        <button type="button" id="sideRailToggle" class="panel-fold-btn" title="Fold tracks and properties" aria-expanded="true" aria-controls="sideRailBody">
-          <span class="panel-fold-chevron" aria-hidden="true"></span>
-          <span class="panel-fold-label">Fold</span>
-        </button>
-      </div>
-      <button type="button" id="sideRailExpand" class="panel-edge-tab" title="Show tracks and properties" aria-expanded="false" aria-controls="sideRailBody" hidden>
-        <span class="panel-edge-tab-text">Tracks</span>
-      </button>
-      <div id="sideRailBody">
-        <div id="streamTree" aria-label="Tracks"></div>
-        <div id="mediaInfo" class="media-info-overlay"></div>
-      </div>
-    </aside>
-  </section>
-
-  <div id="graphSplitter" class="panel-splitter panel-splitter-h" role="separator" aria-orientation="horizontal" aria-label="Resize frame graph" tabindex="0"></div>
-
-  <section id="bottomChrome">
-    <section id="frameGraphSection">
-      <div class="panel-graph-bar">
-        <span class="panel-graph-title">Frame graph</span>
-        <button type="button" id="graphPanelToggle" class="panel-fold-btn" title="Fold frame graph" aria-expanded="true" aria-controls="frameChartWrap">
-          <span class="panel-fold-chevron" aria-hidden="true"></span>
-          <span class="panel-fold-label">Fold</span>
-        </button>
-      </div>
-      <div id="frameChartWrap">
-        <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">
-          <span class="frame-type-item"><span class="frame-type-swatch i" aria-hidden="true"></span>I</span>
-          <span class="frame-type-item"><span class="frame-type-swatch p" aria-hidden="true"></span>P</span>
-          <span class="frame-type-item"><span class="frame-type-swatch b" aria-hidden="true"></span>B</span>
-        </div>
-        <div id="frameChart"></div>
       </div>
     </section>
-    <div id="plotControls">
-      <div id="playerControls">
-        <button type="button" id="playPauseBtn" title="Play/Pause" aria-label="Play/Pause">
-          <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
-        </button>
-        <div class="player-time-wrap">
-          <select id="timeDisplayMode" class="time-display-mode" aria-label="Time display format" title="Time display format">
-            <option value="seconds">Seconds</option>
-            <option value="timecode">Timecode</option>
-            <option value="timestamp">Timestamp</option>
-            <option value="frames">Frames</option>
-          </select>
-          <span id="playerTime">0:00 / 0:00</span>
+
+    <div id="graphSplitter" class="panel-splitter panel-splitter-h" role="separator" aria-orientation="horizontal" aria-label="Resize frame graph" tabindex="0"></div>
+
+    <section id="bottomChrome">
+      <section id="frameGraphSection">
+        <div class="panel-graph-bar">
+          <span class="panel-graph-title">Frame graph</span>
+          <button type="button" id="graphPanelToggle" class="panel-fold-btn" title="Fold frame graph" aria-expanded="true" aria-controls="frameChartWrap">
+            <span class="panel-fold-chevron" aria-hidden="true"></span>
+            <span class="panel-fold-label">Fold</span>
+          </button>
         </div>
-        <input type="range" id="seekBar" min="0" max="0" value="0" step="0.001" aria-label="Seek">
-        <span id="analysisStatus" class="analysis-status" aria-live="polite"></span>
+        <div id="frameChartWrap">
+          <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">
+            <span class="frame-type-item"><span class="frame-type-swatch i" aria-hidden="true"></span>I</span>
+            <span class="frame-type-item"><span class="frame-type-swatch p" aria-hidden="true"></span>P</span>
+            <span class="frame-type-item"><span class="frame-type-swatch b" aria-hidden="true"></span>B</span>
+          </div>
+          <div id="frameChart"></div>
+        </div>
+      </section>
+      <div id="plotControls">
+        <div id="playerControls">
+          <button type="button" id="playPauseBtn" title="Play/Pause" aria-label="Play/Pause">
+            <svg class="icon-play" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="icon-pause" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+          </button>
+          <div class="player-time-wrap">
+            <select id="timeDisplayMode" class="time-display-mode" aria-label="Time display format" title="Time display format">
+              <option value="seconds">Seconds</option>
+              <option value="timecode">Timecode</option>
+              <option value="timestamp">Timestamp</option>
+              <option value="frames">Frames</option>
+            </select>
+            <span id="playerTime">0:00 / 0:00</span>
+          </div>
+          <input type="range" id="seekBar" min="0" max="0" value="0" step="0.001" aria-label="Seek">
+          <span id="analysisStatus" class="analysis-status" aria-live="polite"></span>
+        </div>
       </div>
+    </section>
+  </div>
+
+  <div id="sideRailSplitter" class="panel-splitter panel-splitter-v" role="separator" aria-orientation="vertical" aria-label="Resize properties panel" tabindex="0"></div>
+
+  <aside id="sideRail" aria-label="Tracks and properties">
+    <div class="panel-side-bar">
+      <span class="panel-side-title">Tracks &amp; properties</span>
+      <button type="button" id="sideRailToggle" class="panel-fold-btn" title="Fold tracks and properties" aria-expanded="true" aria-controls="sideRailBody">
+        <span class="panel-fold-chevron" aria-hidden="true"></span>
+        <span class="panel-fold-label">Fold</span>
+      </button>
     </div>
-  </section>
+    <button type="button" id="sideRailExpand" class="panel-edge-tab" title="Show tracks and properties" aria-expanded="false" aria-controls="sideRailBody" hidden>
+      <span class="panel-edge-tab-text">Tracks</span>
+    </button>
+    <div id="sideRailBody">
+      <div id="streamTree" aria-label="Tracks"></div>
+      <div id="mediaInfo" class="media-info-overlay"></div>
+    </div>
+  </aside>
 </main>
 
 <aside id="sideMenu" class="collapsed" aria-hidden="false">

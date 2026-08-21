@@ -87,12 +87,12 @@
     }
 
     function applyGraphHeight(px, { persist = true } = {}) {
-        const workspace = document.getElementById("workspace");
+        const mainColumn = document.getElementById("mainColumn");
         const maxByViewport = Math.floor(window.innerHeight * GRAPH_MAX_RATIO);
-        const maxByWorkspace = workspace
-            ? Math.floor(workspace.clientHeight * GRAPH_MAX_RATIO)
+        const maxByColumn = mainColumn
+            ? Math.floor(mainColumn.clientHeight * GRAPH_MAX_RATIO)
             : maxByViewport;
-        const maxH = Math.max(GRAPH_MIN, Math.min(maxByViewport, maxByWorkspace));
+        const maxH = Math.max(GRAPH_MIN, Math.min(maxByViewport, maxByColumn));
         const height = Math.round(Math.max(GRAPH_MIN, Math.min(maxH, px)));
         document.documentElement.style.setProperty("--vidplot-graph-height", `${height}px`);
         if (persist) {
@@ -123,11 +123,10 @@
         const onMove = (e) => {
             if (!dragging) return;
             const rail = document.getElementById("sideRail");
-            const section = document.getElementById("videoSection");
-            if (!rail || !section) return;
-            const sectionRight = section.getBoundingClientRect().right;
-            // Width measured from the right edge of the video section
-            const next = sectionRight - e.clientX;
+            const workspace = document.getElementById("workspace");
+            if (!rail || !workspace) return;
+            // Width measured from the right edge of the workspace
+            const next = workspace.getBoundingClientRect().right - e.clientX;
             applySideWidth(next, { persist: false });
             resizeAfterPanelChange();
         };
@@ -183,9 +182,9 @@
 
         const onMove = (e) => {
             if (!dragging) return;
-            const workspace = document.getElementById("workspace");
-            if (!workspace) return;
-            const bottom = workspace.getBoundingClientRect().bottom;
+            const mainColumn = document.getElementById("mainColumn");
+            if (!mainColumn) return;
+            const bottom = mainColumn.getBoundingClientRect().bottom;
             const next = bottom - e.clientY;
             applyGraphHeight(next, { persist: false });
             resizeAfterPanelChange();
@@ -255,10 +254,9 @@
         resizeAfterPanelChange();
     }
 
-    /** New video: side rail open, frame graph collapsed (playhead peek). */
+    /** New video: side rail open, frame graph expanded. */
     function resetPanelsForNewVideo() {
-        document.body.classList.remove("panel-side-collapsed");
-        document.body.classList.add("panel-graph-collapsed");
+        document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
         syncSideUi();
         syncGraphUi();
         resizeAfterPanelChange();

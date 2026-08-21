@@ -2,7 +2,7 @@
 
 Local video frame analyzer for inspecting per-frame size, frame type (I/P/B), timestamps (DTS/PTS), and average QP. Drop a clip, scrub with JKL / frame-step keys, and explore the bitrate graph next to a video preview.
 
-![VidPlot with foldable panels, oscilloscope scope legend, frame graph, and tracks](docs/screenshot.png)
+![VidPlot with full-height tracks & properties, video preview, and frame graph aligned below](docs/screenshot.png)
 
 ## Features
 

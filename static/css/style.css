@@ -223,7 +223,8 @@ body {
 #workspace {
   display: none;
   flex: 1;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   min-height: 0;
   width: 100%;
 }
@@ -234,6 +235,16 @@ body.is-loaded #workspace {
 
 body.is-loaded #dropArea {
   display: none;
+}
+
+/* Video + frame graph column (properties rail is a sibling, full height) */
+#mainColumn {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* Full-app file drag while a clip is open */
@@ -258,26 +269,14 @@ body.vidplot-file-drag::before {
 
 #videoSection {
   display: none;
-  flex: 0 1 auto;
-  flex-direction: row;
+  flex: 1 1 auto;
+  flex-direction: column;
   align-items: stretch;
   width: 100%;
-  max-height: 60vh;
   min-height: 0;
+  max-height: none;
   background: var(--bg-deep);
-  border-bottom: 1px solid var(--border);
   overflow: hidden;
-}
-
-/* Expanded graph is capped (~half prior height); video takes the freed space */
-body.is-loaded:not(.panel-graph-collapsed) #videoSection {
-  flex: 1 1 auto;
-  max-height: none;
-}
-
-body.panel-graph-collapsed #videoSection {
-  flex: 1 1 auto;
-  max-height: none;
 }
 
 #videoWrap {
@@ -739,7 +738,7 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   cursor: pointer;
 }
 
-/* Stream / track tree + properties rail (stacked, narrow right column) */
+/* Stream / track tree + properties rail (full-height right column) */
 #sideRail {
   position: relative;
   flex: 0 0 var(--vidplot-side-width, min(360px, 36vw));
@@ -749,6 +748,8 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   display: flex;
   flex-direction: column;
   align-self: stretch;
+  height: auto;
+  min-height: 0;
   background: var(--bg);
   border-left: none;
   overflow: hidden;
@@ -782,6 +783,7 @@ body.is-resizing-graph .panel-splitter-h {
   height: 4px;
   width: 100%;
   cursor: row-resize;
+  flex: 0 0 4px;
 }
 
 body.panel-side-collapsed .panel-splitter-v,
@@ -1593,35 +1595,8 @@ body:has(#sideMenu.visible) #workspace {
 }
 
 @media (max-width: 900px) {
-  #videoSection {
-    max-height: 42vh;
-  }
-
-  body.panel-graph-collapsed #videoSection {
-    max-height: none;
-  }
-
   #videoWrap {
     min-width: 200px;
-  }
-
-  #videoPlayer,
-  #previewCanvas {
-    max-height: calc(42vh - 40px);
-  }
-
-  body.panel-graph-collapsed #videoPlayer,
-  body.panel-graph-collapsed #previewCanvas {
-    max-height: none;
-  }
-
-  #scopePreview {
-    max-height: calc(42vh - 40px);
-  }
-
-  body.panel-graph-collapsed #scopePreview,
-  body.panel-graph-collapsed #videoStage.has-scopes #scopePreview:not([hidden]) {
-    max-height: none;
   }
 
   #streamTree {
@@ -1639,38 +1614,20 @@ body:has(#sideMenu.visible) #workspace {
 }
 
 @media (max-width: 700px) {
-  #videoSection {
+  #workspace {
     flex-direction: column;
-    max-height: none;
+  }
+
+  #mainColumn {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
   }
 
   #videoWrap {
     width: 100%;
     max-width: none;
     min-width: 0;
-    max-height: 28vh;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-
-  body.panel-side-collapsed #videoWrap,
-  body.panel-graph-collapsed #videoWrap {
-    max-height: none;
-  }
-
-  body.panel-graph-collapsed #videoWrap {
-    flex: 1 1 auto;
-  }
-
-  #videoPlayer,
-  #previewCanvas {
-    width: 100%;
-    max-height: 28vh;
-  }
-
-  body.panel-graph-collapsed #videoPlayer,
-  body.panel-graph-collapsed #previewCanvas {
-    max-height: none;
   }
 
   #sideRail {
