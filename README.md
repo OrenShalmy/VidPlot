@@ -149,7 +149,14 @@ Artifacts:
 - `VidPlot-Linux-x64.zip` — Ubuntu/Debian **x86_64** (`uname -m` → `x86_64`)
 - `VidPlot-Linux-arm64.zip` — Ubuntu/Debian **ARM64** (`uname -m` → `aarch64`)
 
-Unpack the matching zip and run `./VidPlot`. Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`). If Electron complains about the sandbox: `./VidPlot --no-sandbox`.
+Unpack the matching zip and run `./VidPlot` (keep the whole folder intact).
+
+```bash
+chmod +x VidPlot
+./VidPlot
+```
+
+Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`). Packaged Linux builds disable Chromium’s SUID sandbox automatically (required for zip installs). For an older build, use `./VidPlot --no-sandbox`.
 
 ## Usage
 
