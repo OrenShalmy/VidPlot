@@ -40,6 +40,10 @@ jobs:
             artifact: VidPlot-Linux-x64
             kind: linux
             builder_args: --linux --x64
+          - os: ubuntu-24.04-arm
+            artifact: VidPlot-Linux-arm64
+            kind: linux
+            builder_args: --linux --arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -168,6 +172,7 @@ jobs:
             artifacts/VidPlot-Windows-x64.zip
             artifacts/VidPlot-Windows-arm64.zip
             artifacts/VidPlot-Linux-x64.zip
+            artifacts/VidPlot-Linux-arm64.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

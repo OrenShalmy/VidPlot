@@ -146,9 +146,10 @@ Artifacts:
 - `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
 - `VidPlot-Windows-x64.zip` — Intel/AMD64 Electron app (`VidPlot.exe`)
 - `VidPlot-Windows-arm64.zip` — Windows on ARM Electron app
-- `VidPlot-Linux-x64.zip` — Ubuntu/Debian x64 Electron app (unpack and run `VidPlot`)
+- `VidPlot-Linux-x64.zip` — Ubuntu/Debian **x86_64** (`uname -m` → `x86_64`)
+- `VidPlot-Linux-arm64.zip` — Ubuntu/Debian **ARM64** (`uname -m` → `aarch64`)
 
-Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`).
+Unpack the matching zip and run `./VidPlot`. Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`). If Electron complains about the sandbox: `./VidPlot --no-sandbox`.
 
 ## Usage
 
