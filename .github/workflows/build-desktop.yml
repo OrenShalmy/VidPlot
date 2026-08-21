@@ -89,9 +89,15 @@ jobs:
         run: npm ci
 
       - name: Verify Electron binary
+        env:
+          # GitHub Ubuntu runners do not set up chrome-sandbox SUID; electron --version
+          # still starts the binary and would abort without this.
+          ELECTRON_DISABLE_SANDBOX: '1'
         run: npx electron --version
 
       - name: Package Electron app
+        env:
+          ELECTRON_DISABLE_SANDBOX: '1'
         run: npx electron-builder --publish never ${{ matrix.builder_args }}
 
       - name: List packaged output
