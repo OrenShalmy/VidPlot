@@ -603,49 +603,102 @@ SCOPE_ORDER = (
     'motion',
     'qpmap',
 )
-SCOPE_FILTER_CHAINS = {
-    'oscilloscope': (
-        'oscilloscope=x=500000/1000000:y=500000/1000000:'
-        's=500000/1000000:t=500000/1000000'
-    ),
-    'waveform': (
-        'format=yuv420p,waveform=intensity=0.1:mode=column:mirror=1:c=1:f=0:'
-        'graticule=green:flags=numbers+dots:scale=0'
-    ),
-    'rgbparade': (
-        'format=gbrp,waveform=filter=lowpass:components=7:display=parade:'
-        'mode=column:mirror=1:graticule=green:flags=numbers+dots:scale=0'
-    ),
-    'histogram': (
-        # Overlapping R/G/B levels on black (Resolve/QCTools-style “levels” look)
-        'format=gbrp,histogram=display_mode=overlay:colors_mode=coloronblack:'
-        'level_height=720:scale_height=0:bgopacity=1:fgopacity=0.85:'
-        'levels_mode=linear'
-    ),
-    'vectorscope': (
-        'format=yuv420p,vectorscope=i=0.1:mode=3:envelope=0:colorspace=1:'
-        'graticule=green:flags=name,'
-        'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
-    ),
-    # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
-    'motion': 'codecview=mv=pf+bf+bb',
-    # Requires -export_side_data +venc_params (H.264/VP9).
-    # qp: paint chroma from per-MB QP; block: fixed 16x16 MB grid on luma.
-    'qpmap': 'codecview=qp=1:block=1',
-}
 
 # Filters that must run on decoder-native frames (side data is resolution-tied)
 SCOPE_NATIVE_FRAME = frozenset({'motion', 'qpmap'})
 
 
-def build_scope_filter_complex(filters, preview_width=960):
+def pix_fmt_bit_depth(pix_fmt):
+    """Infer component bit depth from an FFmpeg pix_fmt name."""
+    if not pix_fmt:
+        return 8
+    text = str(pix_fmt).lower()
+    for bits in (16, 14, 12, 10, 9):
+        if f'p{bits}' in text:
+            return bits
+    return 8
+
+
+def scope_planar_formats(bit_depth):
+    """YUV / RGB planar formats that keep waveform/histogram axis labels accurate."""
+    depth = int(bit_depth) if bit_depth else 8
+    if depth >= 12:
+        return 'yuv420p12le', 'gbrp12le'
+    if depth >= 10:
+        return 'yuv420p10le', 'gbrp10le'
+    if depth >= 9:
+        return 'yuv420p9le', 'gbrp9le'
+    return 'yuv420p', 'gbrp'
+
+
+def source_video_bit_depth(video_path):
+    """Bit depth for scopes from saved analysis JSON (pix_fmt / bits_per_raw_sample)."""
+    try:
+        _, json_path = analysis_json_paths(video_path)
+    except Exception:
+        return 8
+    if not os.path.isfile(json_path):
+        return 8
+    try:
+        with open(json_path, 'r', encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return 8
+    for stream in data.get('streams') or []:
+        if stream.get('codec_type') != 'video':
+            continue
+        raw = stream.get('bits_per_raw_sample')
+        try:
+            if raw is not None and str(raw).strip() and str(raw).upper() != 'N/A':
+                return max(8, int(raw))
+        except (TypeError, ValueError):
+            pass
+        return pix_fmt_bit_depth(stream.get('pix_fmt'))
+    return 8
+
+
+def scope_filter_chains(bit_depth=8):
+    """Build per-analyzer ffmpeg filter strings for the source bit depth."""
+    yuv_fmt, rgb_fmt = scope_planar_formats(bit_depth)
+    return {
+        'oscilloscope': (
+            'oscilloscope=x=500000/1000000:y=500000/1000000:'
+            's=500000/1000000:t=500000/1000000'
+        ),
+        'waveform': (
+            f'format={yuv_fmt},waveform=intensity=0.1:mode=column:mirror=1:c=1:f=0:'
+            'graticule=green:flags=numbers+dots:scale=0'
+        ),
+        'rgbparade': (
+            f'format={rgb_fmt},waveform=filter=lowpass:components=7:display=parade:'
+            'mode=column:mirror=1:graticule=green:flags=numbers+dots:scale=0'
+        ),
+        'histogram': (
+            f'format={rgb_fmt},histogram=display_mode=overlay:colors_mode=coloronblack:'
+            'level_height=720:scale_height=0:bgopacity=1:fgopacity=0.85:'
+            'levels_mode=linear'
+        ),
+        'vectorscope': (
+            f'format={yuv_fmt},vectorscope=i=0.1:mode=3:envelope=0:colorspace=1:'
+            'graticule=green:flags=name,'
+            'pad=ih*1.77778:ih:(ow-iw)/2:(oh-ih)/2'
+        ),
+        # Requires -flags2 +export_mvs on decode (see render_scope_jpeg)
+        'motion': 'codecview=mv=pf+bf+bb',
+        # Requires -export_side_data +venc_params (H.264/VP9).
+        'qpmap': 'codecview=qp=1:block=1',
+    }
+
+
+def build_scope_filter_complex(filters, preview_width=960, bit_depth=8):
     """Build a QCTools-style ffmpeg -filter_complex mosaic for selected analyzers.
 
     Filter strings match QCTools (plus codecview for motion/QP map). Each tile is
     scaled to a shared 16:9 canvas. Motion-vector tiles skip the early scale so
     codecview arrows stay aligned with the decoded frame.
     """
-    selected = {f for f in filters if f in SCOPE_FILTER_CHAINS}
+    chains = scope_filter_chains(bit_depth)
+    selected = {f for f in filters if f in chains}
     names = [name for name in SCOPE_ORDER if name in selected]
     if not names:
         raise ValueError('No valid scope filters selected')
@@ -668,7 +721,7 @@ def build_scope_filter_complex(filters, preview_width=960):
         parts.append(f'[base]split={n}{split_outs}')
 
     for i, name in enumerate(names, start=1):
-        parts.append(f'[x{i}]{SCOPE_FILTER_CHAINS[name]},{fit}[y{i}]')
+        parts.append(f'[x{i}]{chains[name]},{fit}[y{i}]')
 
     stack_inputs = ''.join(f'[y{i}]' for i in range(1, n + 1))
     if n == 1:
@@ -723,7 +776,8 @@ def render_scope_jpeg(video_path, time_sec, filters):
     video_path = validate_video_path(video_path)
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
-    filter_complex, used = build_scope_filter_complex(filters)
+    bit_depth = source_video_bit_depth(video_path)
+    filter_complex, used = build_scope_filter_complex(filters, bit_depth=bit_depth)
 
     try:
         t = max(0.0, float(time_sec))

@@ -236,6 +236,26 @@ body.is-loaded #dropArea {
   display: none;
 }
 
+/* Full-app file drag while a clip is open */
+body.vidplot-file-drag::before {
+  content: "Drop to open video";
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: var(--font);
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: rgba(12, 14, 18, 0.55);
+  border: 2px dashed var(--accent);
+  box-sizing: border-box;
+}
+
 #videoSection {
   display: none;
   flex: 0 1 auto;
@@ -271,7 +291,7 @@ body.panel-graph-collapsed #videoSection {
   justify-content: flex-start;
   background: var(--bg-deep);
   overflow: hidden;
-  border-right: 1px solid var(--border);
+  border-right: none;
 }
 
 body.panel-side-collapsed #videoWrap {
@@ -722,16 +742,72 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
 /* Stream / track tree + properties rail (stacked, narrow right column) */
 #sideRail {
   position: relative;
-  flex: 0 0 min(360px, 36vw);
-  width: min(360px, 36vw);
-  min-width: 280px;
-  max-width: 400px;
+  flex: 0 0 var(--vidplot-side-width, min(360px, 36vw));
+  width: var(--vidplot-side-width, min(360px, 36vw));
+  min-width: 200px;
+  max-width: min(72vw, 720px);
   display: flex;
   flex-direction: column;
   align-self: stretch;
   background: var(--bg);
-  border-left: 1px solid var(--border);
+  border-left: none;
   overflow: hidden;
+}
+
+/* Drag splitters */
+.panel-splitter {
+  flex: 0 0 auto;
+  z-index: 5;
+  background: var(--border);
+  transition: background 0.12s;
+  touch-action: none;
+  user-select: none;
+}
+
+.panel-splitter:hover,
+.panel-splitter:focus-visible,
+body.is-resizing-side .panel-splitter-v,
+body.is-resizing-graph .panel-splitter-h {
+  background: var(--accent);
+  outline: none;
+}
+
+.panel-splitter-v {
+  width: 4px;
+  cursor: col-resize;
+  align-self: stretch;
+}
+
+.panel-splitter-h {
+  height: 4px;
+  width: 100%;
+  cursor: row-resize;
+}
+
+body.panel-side-collapsed .panel-splitter-v,
+body.panel-graph-collapsed .panel-splitter-h {
+  display: none;
+}
+
+body.is-resizing-side,
+body.is-resizing-graph {
+  cursor: inherit;
+  user-select: none;
+}
+
+body.is-resizing-side {
+  cursor: col-resize;
+}
+
+body.is-resizing-graph {
+  cursor: row-resize;
+}
+
+body.is-resizing-side iframe,
+body.is-resizing-graph iframe,
+body.is-resizing-side #frameChart,
+body.is-resizing-graph #frameChart {
+  pointer-events: none;
 }
 
 .panel-side-bar {
@@ -967,12 +1043,12 @@ body.is-loaded #bottomChrome {
   display: flex;
 }
 
-/* Expanded: ~half the old full leftover height (~40–50vh → ~28–32vh) */
+/* Expanded: default ~30vh; override with --vidplot-graph-height when user drags */
 body.is-loaded:not(.panel-graph-collapsed) #bottomChrome {
-  flex: 0 0 30vh;
-  height: 30vh;
-  max-height: 32vh;
-  min-height: 200px;
+  flex: 0 0 var(--vidplot-graph-height, 30vh);
+  height: var(--vidplot-graph-height, 30vh);
+  max-height: none;
+  min-height: 140px;
 }
 
 body.panel-graph-collapsed #bottomChrome {
@@ -1506,9 +1582,9 @@ body:has(#sideMenu.visible) #workspace {
 
 @media (max-width: 1100px) {
   #sideRail {
-    flex-basis: min(320px, 40vw);
-    width: min(320px, 40vw);
-    min-width: 260px;
+    flex-basis: var(--vidplot-side-width, min(320px, 40vw));
+    width: var(--vidplot-side-width, min(320px, 40vw));
+    min-width: 200px;
   }
 
   body.panel-side-collapsed #videoWrap {
@@ -1605,6 +1681,10 @@ body:has(#sideMenu.visible) #workspace {
     max-height: 44vh;
     border-left: none;
     border-top: 1px solid var(--border);
+  }
+
+  .panel-splitter-v {
+    display: none;
   }
 
   body.panel-side-collapsed #sideRail {

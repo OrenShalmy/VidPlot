@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", function () {
         rgbparade: {
             title: "RGB parade",
             x: "Horizontal position (left → right)",
-            y: "Channel level (0 → 255)",
+            y: "Channel level (full digital range)",
             channels: [
                 { name: "R", color: "#ff5a5a" },
                 { name: "G", color: "#5dff7a" },
@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", function () {
         },
         histogram: {
             title: "Histogram",
-            x: "Level 0 → 255",
+            x: "Level (full digital range)",
             y: "Pixel count",
             channels: [
                 { name: "R", color: "#ff5a5a" },

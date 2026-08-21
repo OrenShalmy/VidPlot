@@ -70,6 +70,36 @@ function updatemediaInfo(jsonData) {
     return isFinite(n) ? `${n.toFixed(3)} fps` : String(rate);
   }
 
+  function inferBitsFromPixFmt(pixFmt) {
+    if (!pixFmt) return null;
+    const text = String(pixFmt).toLowerCase();
+    for (const bits of [16, 14, 12, 10, 9]) {
+      if (text.includes(`p${bits}`)) return String(bits);
+    }
+    return null;
+  }
+
+  function formatReorderDelay(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return String(value);
+    if (n === 0) return '0 (no B / no delay)';
+    return `${n} frame${n === 1 ? '' : 's'} (has_b_frames)`;
+  }
+
+  function formatFrameTypeCounts(frames) {
+    if (!Array.isArray(frames) || !frames.length) return null;
+    const counts = { I: 0, P: 0, B: 0, other: 0 };
+    frames.forEach((frame) => {
+      const t = (frame?.pict_type || '').toUpperCase();
+      if (t === 'I' || t === 'P' || t === 'B') counts[t] += 1;
+      else counts.other += 1;
+    });
+    const parts = [`I ${counts.I}`, `P ${counts.P}`, `B ${counts.B}`];
+    if (counts.other) parts.push(`other ${counts.other}`);
+    return parts.join(' · ');
+  }
+
   function parseRatio(value) {
     if (!value || value === '0:1' || value === 'N/A') return null;
     if (String(value).includes(':')) {
@@ -260,10 +290,11 @@ function updatemediaInfo(jsonData) {
         row('Color range', stream.color_range),
         row('Color primaries', stream.color_primaries),
         row('Color transfer', stream.color_transfer),
-        row('Bits per raw sample', stream.bits_per_raw_sample),
+        row('Bits per raw sample', stream.bits_per_raw_sample || inferBitsFromPixFmt(stream.pix_fmt)),
         row('Field order', stream.field_order || 'progressive'),
         row('GOP size', gopSize != null ? `${gopSize} frames` : null),
-        row('Has B-frames', stream.has_b_frames),
+        row('Reorder delay', formatReorderDelay(stream.has_b_frames)),
+        row('Frame types', formatFrameTypeCounts(jsonData.frames)),
         row('Refs', stream.refs),
       ].join('');
     } else if (type === 'audio') {

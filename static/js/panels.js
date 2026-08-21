@@ -1,5 +1,11 @@
 (function () {
     const PEEK_CHART_HEIGHT = 72;
+    const SIDE_WIDTH_KEY = "vidplotSideRailWidth";
+    const GRAPH_HEIGHT_KEY = "vidplotGraphHeight";
+    const SIDE_MIN = 200;
+    const SIDE_MAX = 720;
+    const GRAPH_MIN = 140;
+    const GRAPH_MAX_RATIO = 0.7;
 
     function isGraphCollapsed() {
         return document.body.classList.contains("panel-graph-collapsed");
@@ -14,6 +20,7 @@
         const toggle = document.getElementById("sideRailToggle");
         const expand = document.getElementById("sideRailExpand");
         const rail = document.getElementById("sideRail");
+        const splitter = document.getElementById("sideRailSplitter");
         if (toggle) {
             toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
             toggle.hidden = collapsed;
@@ -26,16 +33,25 @@
             expand.setAttribute("aria-expanded", collapsed ? "false" : "true");
         }
         if (rail) rail.setAttribute("aria-expanded", collapsed ? "false" : "true");
+        if (splitter) {
+            splitter.hidden = collapsed;
+            splitter.setAttribute("aria-hidden", collapsed ? "true" : "false");
+        }
     }
 
     function syncGraphUi() {
         const collapsed = isGraphCollapsed();
         const toggle = document.getElementById("graphPanelToggle");
+        const splitter = document.getElementById("graphSplitter");
         if (toggle) {
             toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
             const label = toggle.querySelector(".panel-fold-label");
             if (label) label.textContent = collapsed ? "Expand" : "Fold";
             toggle.title = collapsed ? "Expand frame graph" : "Fold frame graph";
+        }
+        if (splitter) {
+            splitter.hidden = collapsed;
+            splitter.setAttribute("aria-hidden", collapsed ? "true" : "false");
         }
     }
 
@@ -56,6 +72,167 @@
                     }
                 }, 50);
             });
+        });
+    }
+
+    function applySideWidth(px, { persist = true } = {}) {
+        const width = Math.round(Math.max(SIDE_MIN, Math.min(SIDE_MAX, px)));
+        document.documentElement.style.setProperty("--vidplot-side-width", `${width}px`);
+        if (persist) {
+            try {
+                localStorage.setItem(SIDE_WIDTH_KEY, String(width));
+            } catch (_) { /* ignore */ }
+        }
+        return width;
+    }
+
+    function applyGraphHeight(px, { persist = true } = {}) {
+        const workspace = document.getElementById("workspace");
+        const maxByViewport = Math.floor(window.innerHeight * GRAPH_MAX_RATIO);
+        const maxByWorkspace = workspace
+            ? Math.floor(workspace.clientHeight * GRAPH_MAX_RATIO)
+            : maxByViewport;
+        const maxH = Math.max(GRAPH_MIN, Math.min(maxByViewport, maxByWorkspace));
+        const height = Math.round(Math.max(GRAPH_MIN, Math.min(maxH, px)));
+        document.documentElement.style.setProperty("--vidplot-graph-height", `${height}px`);
+        if (persist) {
+            try {
+                localStorage.setItem(GRAPH_HEIGHT_KEY, String(height));
+            } catch (_) { /* ignore */ }
+        }
+        return height;
+    }
+
+    function loadSavedSizes() {
+        try {
+            const side = parseInt(localStorage.getItem(SIDE_WIDTH_KEY), 10);
+            if (Number.isFinite(side) && side >= SIDE_MIN) applySideWidth(side, { persist: false });
+        } catch (_) { /* ignore */ }
+        try {
+            const graph = parseInt(localStorage.getItem(GRAPH_HEIGHT_KEY), 10);
+            if (Number.isFinite(graph) && graph >= GRAPH_MIN) {
+                applyGraphHeight(graph, { persist: false });
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    function bindVerticalSplitter(splitter) {
+        if (!splitter) return;
+        let dragging = false;
+
+        const onMove = (e) => {
+            if (!dragging) return;
+            const rail = document.getElementById("sideRail");
+            const section = document.getElementById("videoSection");
+            if (!rail || !section) return;
+            const sectionRight = section.getBoundingClientRect().right;
+            // Width measured from the right edge of the video section
+            const next = sectionRight - e.clientX;
+            applySideWidth(next, { persist: false });
+            resizeAfterPanelChange();
+        };
+
+        const onUp = (e) => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.classList.remove("is-resizing-side");
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            const rail = document.getElementById("sideRail");
+            if (rail) applySideWidth(rail.getBoundingClientRect().width, { persist: true });
+            resizeAfterPanelChange();
+            try {
+                splitter.releasePointerCapture(e.pointerId);
+            } catch (_) { /* ignore */ }
+        };
+
+        splitter.addEventListener("pointerdown", (e) => {
+            if (isSideCollapsed() || e.button !== 0) return;
+            const rail = document.getElementById("sideRail");
+            if (!rail) return;
+            e.preventDefault();
+            dragging = true;
+            document.body.classList.add("is-resizing-side");
+            splitter.setPointerCapture(e.pointerId);
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
+        });
+
+        splitter.addEventListener("keydown", (e) => {
+            if (isSideCollapsed()) return;
+            const rail = document.getElementById("sideRail");
+            if (!rail) return;
+            const step = e.shiftKey ? 32 : 12;
+            if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                applySideWidth(rail.getBoundingClientRect().width + step);
+                resizeAfterPanelChange();
+            } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                applySideWidth(rail.getBoundingClientRect().width - step);
+                resizeAfterPanelChange();
+            }
+        });
+    }
+
+    function bindHorizontalSplitter(splitter) {
+        if (!splitter) return;
+        let dragging = false;
+
+        const onMove = (e) => {
+            if (!dragging) return;
+            const workspace = document.getElementById("workspace");
+            if (!workspace) return;
+            const bottom = workspace.getBoundingClientRect().bottom;
+            const next = bottom - e.clientY;
+            applyGraphHeight(next, { persist: false });
+            resizeAfterPanelChange();
+        };
+
+        const onUp = (e) => {
+            if (!dragging) return;
+            dragging = false;
+            document.body.classList.remove("is-resizing-graph");
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            const chrome = document.getElementById("bottomChrome");
+            if (chrome) applyGraphHeight(chrome.getBoundingClientRect().height, { persist: true });
+            resizeAfterPanelChange();
+            try {
+                splitter.releasePointerCapture(e.pointerId);
+            } catch (_) { /* ignore */ }
+        };
+
+        splitter.addEventListener("pointerdown", (e) => {
+            if (isGraphCollapsed() || e.button !== 0) return;
+            e.preventDefault();
+            dragging = true;
+            document.body.classList.add("is-resizing-graph");
+            // Expanding from peek: ensure graph is open if somehow collapsed mid-gesture
+            if (isGraphCollapsed()) setGraphCollapsed(false);
+            splitter.setPointerCapture(e.pointerId);
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
+        });
+
+        splitter.addEventListener("keydown", (e) => {
+            if (isGraphCollapsed()) return;
+            const chrome = document.getElementById("bottomChrome");
+            if (!chrome) return;
+            const step = e.shiftKey ? 40 : 16;
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                applyGraphHeight(chrome.getBoundingClientRect().height + step);
+                resizeAfterPanelChange();
+            } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                applyGraphHeight(chrome.getBoundingClientRect().height - step);
+                resizeAfterPanelChange();
+            }
         });
     }
 
@@ -96,6 +273,10 @@
         const sideExpand = document.getElementById("sideRailExpand");
         const graphToggle = document.getElementById("graphPanelToggle");
 
+        loadSavedSizes();
+        bindVerticalSplitter(document.getElementById("sideRailSplitter"));
+        bindHorizontalSplitter(document.getElementById("graphSplitter"));
+
         if (sideToggle) {
             sideToggle.addEventListener("click", () => setSideCollapsed(!isSideCollapsed()));
         }
@@ -123,6 +304,8 @@
         });
 
         expandAllPanels();
+        syncSideUi();
+        syncGraphUi();
     });
 
     window.vidplotExpandPanels = expandAllPanels;

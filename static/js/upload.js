@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function resetLoadDropStatus() {
-        setLoadDropStatus("Load new video", "file, drop, or URL", { busy: false, error: false });
+        setLoadDropStatus("Load new video", "file, drop anywhere, or URL", { busy: false, error: false });
     }
 
     function isHttpUrl(value) {
@@ -625,6 +625,41 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    function handleDroppedTransfer(dataTransfer) {
+        if (!dataTransfer) return false;
+        const uriList = (
+            dataTransfer.getData("text/uri-list")
+            || dataTransfer.getData("text/plain")
+            || ""
+        ).trim().split(/\r?\n/).find((line) => line && !line.startsWith("#"));
+        if (uriList && isHttpUrl(uriList)) {
+            const input = document.getElementById("urlOpenInput");
+            if (input) input.value = uriList.trim();
+            analyzeLocalPath(uriList.trim());
+            return true;
+        }
+        const file = dataTransfer.files && dataTransfer.files[0];
+        if (!file) return false;
+        const path = fileSystemPath(file);
+        if (path) {
+            analyzeLocalPath(path);
+            return true;
+        }
+        if (hasNativeDesktopBridge()) {
+            // Native path comes from Electron pathForFile or pywebview drop.
+            return false;
+        }
+        handleUploadedFile(file);
+        return true;
+    }
+
+    function dataTransferHasFiles(dt) {
+        if (!dt || !dt.types) return false;
+        return Array.from(dt.types).includes("Files")
+            || Array.from(dt.types).includes("text/uri-list")
+            || Array.from(dt.types).includes("text/plain");
+    }
+
     ["dragenter", "dragover", "dragleave", "drop"].forEach((event) => {
         dropArea.addEventListener(event, (e) => {
             e.preventDefault();
@@ -641,30 +676,49 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     dropArea.addEventListener("drop", (event) => {
-        const uriList = (
-            event.dataTransfer.getData("text/uri-list")
-            || event.dataTransfer.getData("text/plain")
-            || ""
-        ).trim().split(/\r?\n/).find((line) => line && !line.startsWith("#"));
-        if (uriList && isHttpUrl(uriList)) {
-            const input = document.getElementById("urlOpenInput");
-            if (input) input.value = uriList.trim();
-            analyzeLocalPath(uriList.trim());
-            return;
-        }
-        const file = event.dataTransfer.files[0];
-        if (!file) return;
-        const path = fileSystemPath(file);
-        if (path) {
-            analyzeLocalPath(path);
-            return;
-        }
-        if (hasNativeDesktopBridge()) {
-            // Native path comes from Electron pathForFile or pywebview drop.
-            return;
-        }
-        handleUploadedFile(file);
+        handleDroppedTransfer(event.dataTransfer);
     });
+
+    // Whole-window drop while a clip is open (and as a global safety net)
+    let windowDragDepth = 0;
+    function clearWindowDrag() {
+        windowDragDepth = 0;
+        document.body.classList.remove("vidplot-file-drag");
+        if (loadNewVideoBtn) loadNewVideoBtn.classList.remove("drag-over");
+    }
+
+    window.addEventListener("dragenter", (e) => {
+        if (!dataTransferHasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        windowDragDepth += 1;
+        document.body.classList.add("vidplot-file-drag");
+    });
+    window.addEventListener("dragover", (e) => {
+        if (!dataTransferHasFiles(e.dataTransfer)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        document.body.classList.add("vidplot-file-drag");
+    });
+    window.addEventListener("dragleave", (e) => {
+        if (!dataTransferHasFiles(e.dataTransfer)) return;
+        windowDragDepth = Math.max(0, windowDragDepth - 1);
+        if (windowDragDepth === 0) {
+            document.body.classList.remove("vidplot-file-drag");
+        }
+    });
+    window.addEventListener("drop", (e) => {
+        if (!dataTransferHasFiles(e.dataTransfer)) {
+            clearWindowDrag();
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        clearWindowDrag();
+        // Initial drop zone already handles its own drop; avoid double-open
+        if (e.target && e.target.closest && e.target.closest("#dropArea")) return;
+        handleDroppedTransfer(e.dataTransfer);
+    });
+    window.addEventListener("dragend", clearWindowDrag);
 
     // Side-menu "Load new video" also accepts drops while a clip is open
     if (loadNewVideoBtn) {
@@ -688,17 +742,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         loadNewVideoBtn.addEventListener("drop", (event) => {
             if (loadNewVideoBtn.disabled) return;
-            const file = event.dataTransfer.files[0];
-            if (!file) return;
-            const path = fileSystemPath(file);
-            if (path) {
-                analyzeLocalPath(path);
-                return;
-            }
-            if (hasNativeDesktopBridge()) {
-                return;
-            }
-            handleUploadedFile(file);
+            handleDroppedTransfer(event.dataTransfer);
         });
     }
 
