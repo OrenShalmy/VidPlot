@@ -36,6 +36,10 @@ jobs:
             artifact: VidPlot-Windows-arm64
             kind: win
             builder_args: --win --arm64
+          - os: ubuntu-latest
+            artifact: VidPlot-Linux-x64
+            kind: linux
+            builder_args: --linux --x64
 
     runs-on: ${{ matrix.os }}
 
@@ -57,6 +61,14 @@ jobs:
           node-version: '24'
           cache: npm
 
+      - name: Install Linux packaging deps
+        if: matrix.kind == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
+            xdg-utils libatspi2.0-0 libuuid1 libsecret-1-0
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -64,6 +76,10 @@ jobs:
 
       - name: Build analysis sidecar
         run: python build_desktop.py
+
+      - name: Make Linux sidecar executable
+        if: matrix.kind == 'linux'
+        run: chmod +x dist/vidplot-server/VidPlotServer
 
       - name: Verify sidecar output
         run: |
@@ -139,11 +155,13 @@ jobs:
 
             Terminal fallback: `cp -R -X ~/Downloads/VidPlot.app /Applications/VidPlot.app`
 
-            FFmpeg must be installed separately (`brew install ffmpeg` on macOS).
+            FFmpeg must be installed separately (`brew install ffmpeg` on macOS;
+            `apt install ffmpeg` on Debian/Ubuntu).
           files: |
             artifacts/VidPlot-macOS-arm64.zip
             artifacts/VidPlot-Windows-x64.zip
             artifacts/VidPlot-Windows-arm64.zip
+            artifacts/VidPlot-Linux-x64.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

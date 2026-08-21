@@ -55,6 +55,14 @@
         "zip"
       ],
       "artifactName": "VidPlot-Windows-${arch}.${ext}"
+    },
+    "linux": {
+      "category": "Video",
+      "icon": "static/icons/icon-512x512.png",
+      "target": [
+        "zip"
+      ],
+      "artifactName": "VidPlot-Linux-${arch}.${ext}"
     }
   }
 }

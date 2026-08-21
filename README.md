@@ -127,9 +127,9 @@ Do **not** use `xattr -cr` or `-dr` on the `.app` — recursing into a signed bu
 
 To ship builds that open without this step, add an Apple Developer ID certificate and notarization in CI.
 
-### CI (macOS + Windows)
+### CI (macOS + Windows + Linux)
 
-GitHub Actions builds desktop zips on macOS and Windows runners.
+GitHub Actions builds desktop zips on macOS, Windows, and Ubuntu runners.
 
 - **Tag a release** (builds all platforms and attaches assets):
 
@@ -146,6 +146,9 @@ Artifacts:
 - `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
 - `VidPlot-Windows-x64.zip` — Intel/AMD64 Electron app (`VidPlot.exe`)
 - `VidPlot-Windows-arm64.zip` — Windows on ARM Electron app
+- `VidPlot-Linux-x64.zip` — Ubuntu/Debian x64 Electron app (unpack and run `VidPlot`)
+
+Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`).
 
 ## Usage
 
