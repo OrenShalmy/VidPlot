@@ -1,6 +1,7 @@
 {
   "name": "vidplot",
   "productName": "VidPlot",
+  "desktopName": "VidPlot.desktop",
   "version": "1.2.0",
   "description": "Local video frame analyzer",
   "private": true,
@@ -88,7 +89,6 @@
     },
     "linux": {
       "category": "Video",
-      "desktopName": "VidPlot",
       "syncDesktopName": true,
       "icon": "static/icons/icon-512x512.png",
       "target": [
