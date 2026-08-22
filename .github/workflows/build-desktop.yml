@@ -125,10 +125,23 @@ jobs:
             cp "$setup" staged/
           fi
           # Linux AppImage (MIME / Open with)
+          # electron-builder uses arch token x86_64 (not x64) in AppImage filenames
           if [[ "${{ matrix.kind }}" == "linux" ]]; then
-            appimage="dist-electron/${{ matrix.artifact }}.AppImage"
-            test -f "$appimage"
-            cp "$appimage" staged/
+            canonical="dist-electron/${{ matrix.artifact }}.AppImage"
+            if [[ -f "$canonical" ]]; then
+              cp "$canonical" staged/
+            else
+              shopt -s nullglob
+              found=(dist-electron/VidPlot-Linux-*.AppImage)
+              shopt -u nullglob
+              if [[ ${#found[@]} -lt 1 ]]; then
+                echo "No AppImage found under dist-electron/" >&2
+                ls -lah dist-electron || true
+                exit 1
+              fi
+              echo "Using AppImage: ${found[0]} -> staged/${{ matrix.artifact }}.AppImage"
+              cp "${found[0]}" "staged/${{ matrix.artifact }}.AppImage"
+            fi
           fi
           ls -lah staged
 

@@ -88,6 +88,8 @@
     },
     "linux": {
       "category": "Video",
+      "desktopName": "VidPlot",
+      "syncDesktopName": true,
       "icon": "static/icons/icon-512x512.png",
       "target": [
         "zip",
@@ -102,6 +104,9 @@
         "video/webm",
         "video/x-m4v"
       ],
+      "artifactName": "VidPlot-Linux-${arch}.${ext}"
+    },
+    "appImage": {
       "artifactName": "VidPlot-Linux-${arch}.${ext}"
     }
   }
