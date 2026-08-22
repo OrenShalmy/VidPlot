@@ -2,6 +2,8 @@
 
 Local video analyzer for engineers and QC: inspect **per-frame size**, **frame type** (I/P/B), **timestamps**, **average QP**, and **scopes** next to a synced preview — without uploading your files to the cloud.
 
+![VidPlot overview with preview, tracks, properties, and frame graph](docs/overview.png)
+
 ## Frame graph & transport
 
 See how every frame is encoded, not just the headline bitrate.
@@ -25,8 +27,7 @@ Container and stream metadata from ffprobe, plus analysis derived from the frame
 
 Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; waveform, parade, histogram, and vectorscope can show a **live PiP** of the picture for reference.
 
-Waveform and RGB parade scopes with picture-in-picture
-
+![Waveform and RGB parade scopes with picture-in-picture](docs/scopes.png)
 
 | Scope          | What it shows                                    |
 | -------------- | ------------------------------------------------ |
@@ -38,14 +39,13 @@ Waveform and RGB parade scopes with picture-in-picture
 | Motion vectors | FFmpeg codecview motion arrows (codec-dependent) |
 | QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.)  |
 
-
 Hard codecs (e.g. ProRes) use an ffmpeg→canvas preview path so scopes and scrubbing still work when the browser cannot decode the file natively.
 
 ## Wipe compare
 
 Drop or pick a **second clip** while one is already open — choose **Compare with existing** — and scrub both in sync behind a draggable wipe.
 
-Vertical wipe compare of two encodes of the same scene
+![Vertical wipe compare of two encodes of the same scene](docs/compare-wipe.png)
 
 - **Vertical or horizontal** wipe divider (thin line, easy to drag)
 - **Labels** on each side with the file name
@@ -58,7 +58,7 @@ Vertical wipe compare of two encodes of the same scene
 
 Electron desktop app with a bundled analysis server. Open local paths without copying files; optional HTTP(S) URLs are probed in place.
 
-Options tray, QP map overlay, and frame graph detail
+![Options tray, QP map overlay, and frame graph detail](docs/qp-map.png)
 
 - **Load new video** or **Compare with another video** from the Options tray
 - **Drag-and-drop** anywhere in the app while a clip is open
