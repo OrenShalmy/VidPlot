@@ -1,170 +1,79 @@
 # VidPlot
 
-Local video frame analyzer for inspecting per-frame size, frame type (I/P/B), timestamps (DTS/PTS), and average QP. Drop a clip, scrub with JKL / frame-step keys, and explore the bitrate graph next to a video preview.
+Local video analyzer for engineers and QC: inspect **per-frame size**, **frame type** (I/P/B), **timestamps**, **average QP**, and **scopes** next to a synced preview — without uploading your files to the cloud.
 
-![VidPlot with full-height tracks & properties, video preview, and frame graph aligned below](docs/screenshot.png)
+## Frame graph & transport
 
-## Features
+See how every frame is encoded, not just the headline bitrate.
 
-- Drag-and-drop, native file open (desktop), or HTTP(S) URL (ffprobe/ffmpeg stream the remote file)
-- Staged analysis: streams/properties → frame chart → QP (when available)
-- Per-frame hover: frame number, timecode, DTS, PTS, size, type, Avg QP
-- JKL shuttle, Space play/pause, `,` / `.` (or `<` / `>`) frame step, arrow keys ±1s
-- Desktop app: Electron window + bundled Python analysis server
+- **Per-frame bar chart** — size in Mb/s, color-coded **I**, **P**, and **B**
+- **Hover tooltip** — frame index, timecode, DTS/PTS, size, type, and Avg QP when available
+- **Synced playback** — scrub the graph or use the seek bar; playhead stays aligned with the video
+- **JKL shuttle**, Space play/pause, comma/period frame step, arrow keys ±1s
+- **Time display** — seconds, timecode, timestamp, or frame index
+- **Zoom** the graph to inspect short GOPs or spikes
 
-## Prerequisites
+## Tracks & properties
 
-- Python 3.10+ and Node.js 20+ for development
-- [FFmpeg](https://ffmpeg.org/) (provides `ffprobe` and `ffmpeg` on your `PATH`)
+Container and stream metadata from ffprobe, plus analysis derived from the frame pass.
 
-### Install FFmpeg
+- **Track tree** — video, audio, captions; click a stream for detail
+- **Properties** — codec, profile/level, resolution, frame rate, pixel format, color metadata, GOP size, reorder delay, frame-type counts, bit rate, encoder tags
+- **Resizable layout** — properties rail full height; frame graph under the preview
 
-**macOS**
+## Broadcast scopes
 
-```bash
-brew install ffmpeg
-```
+Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; waveform, parade, histogram, and vectorscope can show a **live PiP** of the picture for reference.
 
-**Ubuntu / Debian**
+Waveform and RGB parade scopes with picture-in-picture
 
-```bash
-sudo apt update
-sudo apt install ffmpeg
-```
 
-**Windows**
+| Scope          | What it shows                                    |
+| -------------- | ------------------------------------------------ |
+| Oscilloscope   | 2D trace of levels along a line in the frame     |
+| Waveform       | Luma levels across columns                       |
+| RGB parade     | R, G, B waveforms side by side                   |
+| Histogram      | Overlapping R/G/B level distribution             |
+| Vectorscope    | Chrominance (U vs V)                             |
+| Motion vectors | FFmpeg codecview motion arrows (codec-dependent) |
+| QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.)  |
 
-Download from the [FFmpeg site](https://ffmpeg.org/download.html) and add it to your system `PATH`.
 
-## Setup
+Hard codecs (e.g. ProRes) use an ffmpeg→canvas preview path so scopes and scrubbing still work when the browser cannot decode the file natively.
 
-```bash
-git clone https://github.com/Oren-Beamr/VidPlot.git
-cd VidPlot
+## Wipe compare
 
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+Drop or pick a **second clip** while one is already open — choose **Compare with existing** — and scrub both in sync behind a draggable wipe.
 
-pip install -r requirements.txt
-npm install
-```
+Vertical wipe compare of two encodes of the same scene
 
-npm 11+ may skip Electron’s binary download until you allow it:
+- **Vertical or horizontal** wipe divider (thin line, easy to drag)
+- **Labels** on each side with the file name
+- **Click** a side to show that clip in **Tracks & properties** and the frame graph
+- **Scopes apply to both** videos at the same timecode
+- **Zoom and pan** on the compare view; **double-click** for fullscreen
+- **End compare** returns to single-clip mode
 
-```bash
-npm install-scripts approve electron
-```
+## Options & desktop shell
 
-If you see `Electron failed to install correctly`:
+Electron desktop app with a bundled analysis server. Open local paths without copying files; optional HTTP(S) URLs are probed in place.
 
-```bash
-npm install-scripts approve electron
-rm -rf node_modules/electron
-npm install
-```
+Options tray, QP map overlay, and frame graph detail
 
-## Run
+- **Load new video** or **Compare with another video** from the Options tray
+- **Drag-and-drop** anywhere in the app while a clip is open
+- Configure **ffprobe** / **ffmpeg** paths when binaries are not on `PATH`
+- Keyboard shortcuts listed in the tray
 
-### Desktop (recommended)
+## Quick start
 
-```bash
-npm run electron
-```
+1. **Download** a build from [GitHub Releases](https://github.com/Oren-Beamr/VidPlot/releases) (macOS arm64, Windows x64/arm64, Linux x64/arm64).
+2. Install [FFmpeg](https://ffmpeg.org/) so `ffprobe` and `ffmpeg` are on your `PATH` (or set paths in Options).
+3. Run the app, drop a video, and wait for properties → frame graph → QP (when supported).
 
-Uses the project `venv/` automatically. Override with `VIDPLOT_PYTHON=/path/to/python`.
+**macOS downloaded builds** are not notarized. If Gatekeeper blocks the app, Control-click → Open, or see release notes for quarantine workarounds.
 
-Open files in the **VidPlot window**. Cursor’s Simple Browser can talk to the same Flask server but has no native picker; it falls back to a normal file chooser (upload copy).
-
-### Browser / Flask
-
-```bash
-python app.py
-```
-
-Then open [http://localhost:5000](http://localhost:5000).
-
-## Build a desktop app
-
-Packaged builds ship Electron plus a PyInstaller **VidPlotServer** sidecar (no pywebview / .NET). FFmpeg is still expected on `PATH` (or set in Configure).
-
-### Locally
-
-```bash
-python build_desktop.py
-npm run dist
-```
-
-Output zips land in `dist-electron/`.
-
-### macOS first launch (downloaded from GitHub)
-
-Release builds are **not notarized**. Chrome/Safari quarantine the zip and macOS may say **“VidPlot.app is damaged”** — the app is fine; Gatekeeper is blocking an unsigned download.
-
-**Steps that work:**
-
-1. Extract `VidPlot.app` from the zip.
-2. **Control-click** (or right-click) `VidPlot.app` → **Open** → **Open** again.
-3. If macOS still refuses: **System Settings → Privacy & Security** → scroll down → **Open Anyway**.
-
-After that one-time approval, double-click launches normally.
-
-**Alternatives if Terminal is easier:**
-
-Copy to `/Applications` without quarantine xattrs (macOS often blocks `xattr -d` on the `.app` with `Operation not permitted`):
-
-```bash
-cp -R -X ~/Downloads/VidPlot.app /Applications/VidPlot.app
-open /Applications/VidPlot.app
-```
-
-Or clear quarantine on the **zip** before extracting:
-
-```bash
-xattr -d com.apple.quarantine ~/Downloads/VidPlot-macOS-arm64.zip
-```
-
-Do **not** use `xattr -cr` or `-dr` on the `.app` — recursing into a signed bundle fails with hundreds of `Operation not permitted` errors.
-
-To ship builds that open without this step, add an Apple Developer ID certificate and notarization in CI.
-
-### CI (macOS + Windows + Linux)
-
-GitHub Actions builds desktop zips on macOS, Windows, and Ubuntu runners.
-
-- **Tag a release** (builds all platforms and attaches assets):
-
-  ```bash
-  git tag v1.2.0
-  git push vidplot v1.2.0
-  ```
-
-- **Manual run:** Actions → **Build desktop** → Run workflow  
-  Optionally check “Upload build zips to a GitHub Release” and set a tag like `v1.2.0`.
-
-Artifacts:
-
-- `VidPlot-macOS-arm64.zip` — Apple Silicon `.app`
-- `VidPlot-Windows-x64.zip` — Intel/AMD64 Electron app (`VidPlot.exe`)
-- `VidPlot-Windows-arm64.zip` — Windows on ARM Electron app
-- `VidPlot-Linux-x64.zip` — Ubuntu/Debian **x86_64** (`uname -m` → `x86_64`)
-- `VidPlot-Linux-arm64.zip` — Ubuntu/Debian **ARM64** (`uname -m` → `aarch64`)
-
-Unpack the matching zip and run `./VidPlot` (keep the whole folder intact).
-
-```bash
-chmod +x VidPlot
-./VidPlot
-```
-
-Linux still needs FFmpeg on `PATH` (`sudo apt install ffmpeg`). Packaged Linux builds disable Chromium’s SUID sandbox automatically (required for zip installs). For an older build, use `./VidPlot --no-sandbox`.
-
-## Usage
-
-1. Open a video (drag-and-drop, file picker, or paste an `http://` / `https://` URL).
-2. Wait for properties, then the frame graph (QP fills in when supported).
-3. Hover bars for frame details; use keyboard shortcuts to scrub and shuttle.
-
-Remote URLs are probed in place (no download copy). Preview playback uses the URL directly in the video element, so the host must allow media access from the app.
+**Develop locally:** `git clone` → `pip install -r requirements.txt` → `npm install` → `npm run electron` (uses `venv/` automatically).
 
 ## License
 
