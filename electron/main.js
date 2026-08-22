@@ -5,13 +5,11 @@ const http = require('http');
 const net = require('net');
 const path = require('path');
 
-// Portable Linux zips cannot ship chrome-sandbox as root/setuid. Without this,
-// Electron aborts on typical Ubuntu installs ("SUID sandbox helper... mode 4755").
-if (
-    process.platform === 'linux'
-    && (app.isPackaged || process.env.ELECTRON_DISABLE_SANDBOX === '1')
-) {
+// Portable Linux builds cannot ship a root-owned setuid chrome-sandbox.
+// Always disable the SUID sandbox on Linux (zip + AppImage).
+if (process.platform === 'linux') {
     app.commandLine.appendSwitch('no-sandbox');
+    app.commandLine.appendSwitch('disable-setuid-sandbox');
 }
 
 const VIDEO_EXTENSIONS = [

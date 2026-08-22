@@ -193,7 +193,11 @@ jobs:
 
             - **macOS:** `VidPlot-macOS-arm64.zip` (Open with works after first launch)
             - **Windows:** prefer `VidPlot-Windows-*-Setup.exe` for file associations; zip is portable
-            - **Linux:** prefer `VidPlot-Linux-*.AppImage` for MIME / Open with; zip is portable
+            - **Linux:** prefer `VidPlot-Linux-*.AppImage` for MIME / Open with; zip is portable.
+              AppImage needs `zlib1g` (and usually `libfuse2` / `libfuse2t64`). Zip builds
+              run with Chromium `--no-sandbox` (no root chrome-sandbox required).
+              Fallback: `APPIMAGE_EXTRACT_AND_RUN=1 ./VidPlot-Linux-*.AppImage` or
+              `./vidplot --no-sandbox` from the unzipped folder.
 
             ## macOS first launch
 

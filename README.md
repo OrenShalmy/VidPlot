@@ -73,6 +73,22 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 
 **Open with VidPlot:** after install, use **Open with → VidPlot** from Finder / Explorer / your file manager (or set VidPlot as the default app for a type in OS settings). On Windows use the **Setup** installer for associations; on Linux prefer the **AppImage**. macOS zip of `.app` registers after the first launch.
 
+**Linux (Ubuntu / aarch64):**
+
+- **Zip:** run `./vidplot` from the unpacked folder (builds disable the Chromium SUID sandbox for portable use). Fallback: `./vidplot --no-sandbox`
+- **AppImage:** needs host zlib (and usually FUSE). On Ubuntu 24.04:
+
+  ```bash
+  sudo apt update
+  sudo apt install -y zlib1g libfuse2t64
+  chmod +x VidPlot-Linux-arm64.AppImage
+  ./VidPlot-Linux-arm64.AppImage
+  ```
+
+  If FUSE is unavailable: `APPIMAGE_EXTRACT_AND_RUN=1 ./VidPlot-Linux-arm64.AppImage`
+
+- Install FFmpeg separately: `sudo apt install ffmpeg`
+
 **macOS downloaded builds** are not notarized. If Gatekeeper blocks the app, Control-click → Open, or see release notes for quarantine workarounds.
 
 **Develop locally:** `git clone` → `pip install -r requirements.txt` → `npm install` → `npm run electron` (uses `venv/` automatically). To smoke-test OS open: `npm run electron -- /path/to/clip.mp4`.
