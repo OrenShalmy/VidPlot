@@ -13,6 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/compare.js') }}?v=compare1"></script>
   <script src="{{ url_for('static', filename='js/player.js') }}"></script>
   <script src="{{ url_for('static', filename='js/panels.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
@@ -54,19 +55,69 @@
   <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
 </div>
 
+<div id="loadChoiceDialog" class="load-choice-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="loadChoiceTitle">
+  <div class="load-choice-backdrop" data-load-choice-dismiss></div>
+  <div class="load-choice-panel">
+    <h2 id="loadChoiceTitle" class="load-choice-title">Open video</h2>
+    <p class="load-choice-text">A clip is already open. What would you like to do?</p>
+    <div class="load-choice-actions">
+      <button type="button" id="loadChoiceReplace" class="load-choice-btn load-choice-btn-primary">Load new video</button>
+      <button type="button" id="loadChoiceCompare" class="load-choice-btn">Compare with existing</button>
+      <button type="button" class="load-choice-btn load-choice-btn-ghost" data-load-choice-dismiss>Cancel</button>
+    </div>
+  </div>
+</div>
+
 <main id="workspace">
   <div id="mainColumn">
     <section id="videoSection">
       <div id="videoWrap">
-        <div id="videoStage">
-          <video id="videoPlayer">
-            <source id="videoSource" src="" type="video/mp4">
-            Your browser does not support the video tag.
-          </video>
-          <canvas id="previewCanvas" hidden aria-label="Video preview"></canvas>
-          <img id="scopePreview" alt="" hidden>
-          <div id="scopeLegend" class="scope-legend" hidden></div>
-          <div id="scopeStatus" class="scope-status" hidden></div>
+        <div id="singleStage">
+          <div id="videoStage">
+            <video id="videoPlayer">
+              <source id="videoSource" src="" type="video/mp4">
+              Your browser does not support the video tag.
+            </video>
+            <canvas id="previewCanvas" hidden aria-label="Video preview"></canvas>
+            <img id="scopePreview" alt="" hidden>
+            <div id="scopeLegend" class="scope-legend" hidden></div>
+            <div id="scopeStatus" class="scope-status" hidden></div>
+          </div>
+        </div>
+
+        <div id="compareStage" class="compare-stage" hidden>
+          <div class="compare-toolbar" role="toolbar" aria-label="Compare controls">
+            <button type="button" id="compareOrientVertical" class="compare-tool-btn is-active" title="Vertical wipe (left / right)">Vertical</button>
+            <button type="button" id="compareOrientHorizontal" class="compare-tool-btn" title="Horizontal wipe (top / bottom)">Horizontal</button>
+            <button type="button" id="compareEndBtn" class="compare-tool-btn compare-tool-end" title="End comparison">End compare</button>
+          </div>
+          <div id="compareViewport" class="compare-viewport">
+            <div id="comparePane" class="compare-pane">
+              <div class="compare-layer" data-slot="A" data-compare-side="left">
+                <div class="compare-label" id="compareLabelA"></div>
+                <div class="compare-media">
+                  <video id="videoPlayerA" playsinline muted>
+                    <source id="videoSourceA" src="" type="video/mp4">
+                  </video>
+                  <canvas id="previewCanvasA" hidden aria-label="Compare video A"></canvas>
+                  <img id="scopePreviewA" class="compare-scope-img" alt="" hidden>
+                </div>
+              </div>
+              <div class="compare-layer compare-layer-b" data-slot="B" data-compare-side="right">
+                <div class="compare-label" id="compareLabelB"></div>
+                <div class="compare-media">
+                  <video id="videoPlayerB" playsinline muted>
+                    <source id="videoSourceB" src="" type="video/mp4">
+                  </video>
+                  <canvas id="previewCanvasB" hidden aria-label="Compare video B"></canvas>
+                  <img id="scopePreviewB" class="compare-scope-img" alt="" hidden>
+                </div>
+              </div>
+              <div id="compareDivider" class="compare-divider" role="separator" tabindex="0" aria-label="Compare wipe position"></div>
+              <div id="scopeLegendCompare" class="scope-legend compare-scope-legend" hidden></div>
+              <div id="scopeStatusCompare" class="scope-status compare-scope-status" hidden></div>
+            </div>
+          </div>
         </div>
         <div id="scopeToggles" class="scope-toggles" role="toolbar" aria-label="Video analyzers">
           <div class="scope-switch">
@@ -180,6 +231,10 @@
       <button type="button" id="loadNewVideoBtn" class="side-menu-action load-drop-target" title="Click to browse, or drop a file anywhere in the app">
         <span class="load-drop-title">Load new video</span>
         <span class="load-drop-hint">file, drop anywhere, or URL</span>
+      </button>
+      <button type="button" id="compareVideoBtn" class="side-menu-action" title="Wipe-compare a second clip against the open video" disabled hidden>
+        <span class="load-drop-title">Compare with another video</span>
+        <span class="load-drop-hint">drop second file or pick from disk</span>
       </button>
 
       <div class="config-section">

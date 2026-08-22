@@ -11,11 +11,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const sideMenuToggle = document.getElementById("sideMenuToggle");
     const sideMenuFold = document.getElementById("sideMenuFold");
     const loadNewVideoBtn = document.getElementById("loadNewVideoBtn");
+    const compareVideoBtn = document.getElementById("compareVideoBtn");
     const dropError = document.getElementById("dropError");
 
     let desktopMode = document.body?.dataset?.desktop === "1";
     let analyzePulseTimer = null;
     let analysisGeneration = 0;
+    let compareBGeneration = 0;
+    let pendingOpenPath = "";
 
     if (videoSection) videoSection.style.display = "none";
     if (bottomChrome) bottomChrome.style.display = "none";
@@ -58,6 +61,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function showWorkspace() {
         document.body.classList.add("is-loaded");
+        if (compareVideoBtn) {
+            compareVideoBtn.hidden = false;
+            compareVideoBtn.disabled = false;
+        }
         // Clear any inline display from showDropZone — CSS alone cannot override it
         if (dropArea) dropArea.style.display = "";
         if (videoSection) videoSection.style.display = "flex";
@@ -73,6 +80,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function showDropZone() {
         document.body.classList.remove("is-loaded");
+        if (compareVideoBtn) {
+            compareVideoBtn.hidden = true;
+            compareVideoBtn.disabled = true;
+        }
         document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
         if (videoSection) videoSection.style.display = "none";
         if (bottomChrome) bottomChrome.style.display = "none";
@@ -153,7 +164,37 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    async function pickCompareVideo() {
+        if (!document.body.classList.contains("is-loaded")) {
+            showDropError("Open a video first, then compare.");
+            return;
+        }
+        clearDropError();
+        try {
+            const api = await waitForNativeApi();
+            if (api) {
+                const path = await api.open_video();
+                if (path) await startCompareWithPath(path);
+                return;
+            }
+            showDropError("Compare needs a local file path (desktop) or drop a second file on the window.");
+        } catch (err) {
+            console.error(err);
+            showDropError(err.message || "Could not open compare file");
+        }
+    }
+
+    if (compareVideoBtn) {
+        compareVideoBtn.addEventListener("click", () => {
+            if (compareVideoBtn.disabled) return;
+            pickCompareVideo();
+        });
+    }
+
     function resetWorkspaceToDrop({ cancelAnalysis = false } = {}) {
+        if (typeof window.vidplotExitCompareMode === "function" && window.vidplotIsCompareMode?.()) {
+            window.vidplotExitCompareMode();
+        }
         if (videoPlayer) {
             videoPlayer.pause();
             videoPlayer.removeAttribute("src");
@@ -166,6 +207,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (videoUpload) videoUpload.value = "";
         window.vidplotCurrentFilename = "";
         window.vidplotCurrentSourcePath = "";
+        window.vidplotCurrentVideoUrl = "";
         window.vidplotJsonData = null;
         clearDropError();
         resetLoadDropStatus();
@@ -277,14 +319,168 @@ document.addEventListener("DOMContentLoaded", function () {
         el.textContent = message || "";
     }
 
+    function showLoadChoiceDialog() {
+        const dialog = document.getElementById("loadChoiceDialog");
+        if (!dialog) {
+            if (pendingOpenPath) analyzeLocalPath(pendingOpenPath);
+            return;
+        }
+        dialog.hidden = false;
+    }
+
+    function hideLoadChoiceDialog() {
+        const dialog = document.getElementById("loadChoiceDialog");
+        if (dialog) dialog.hidden = true;
+        pendingOpenPath = "";
+    }
+
+    function queueOpenPath(path) {
+        if (!path) return;
+        if (document.body.classList.contains("is-loaded") && window.vidplotCurrentSourcePath) {
+            pendingOpenPath = path;
+            showLoadChoiceDialog();
+            return;
+        }
+        analyzeLocalPath(path);
+    }
+
+    const loadChoiceReplace = document.getElementById("loadChoiceReplace");
+    const loadChoiceCompare = document.getElementById("loadChoiceCompare");
+    const loadChoiceDialog = document.getElementById("loadChoiceDialog");
+
+    if (loadChoiceReplace) {
+        loadChoiceReplace.addEventListener("click", () => {
+            const path = pendingOpenPath;
+            hideLoadChoiceDialog();
+            if (path) analyzeLocalPath(path);
+        });
+    }
+    if (loadChoiceCompare) {
+        loadChoiceCompare.addEventListener("click", () => {
+            const path = pendingOpenPath;
+            hideLoadChoiceDialog();
+            if (path) startCompareWithPath(path);
+        });
+    }
+    if (loadChoiceDialog) {
+        loadChoiceDialog.querySelectorAll("[data-load-choice-dismiss]").forEach((btn) => {
+            btn.addEventListener("click", () => hideLoadChoiceDialog());
+        });
+    }
+
+    function enableSlotPreview(slot, slotData, initialTime) {
+        if (!slotData || typeof window.vidplotEnableSlotPreviewMode !== "function") return;
+        const els = typeof window.vidplotGetCompareSlotElements === "function"
+            ? window.vidplotGetCompareSlotElements(slot)
+            : null;
+        window.vidplotEnableSlotPreviewMode(slot, {
+            mode: slotData.previewMode || "native",
+            path: slotData.path,
+            duration: parseFloat(slotData.jsonData?.format?.duration) || 0,
+            jsonData: slotData.jsonData,
+            videoUrl: slotData.videoUrl,
+            initialTime: Number(initialTime) || 0,
+            video: els?.video,
+            canvas: els?.canvas,
+            source: els?.source,
+        });
+    }
+
+    async function startCompareWithPath(pathB) {
+        if (!pathB) return;
+        if (typeof window.vidplotSnapshotSinglePreview === "function") {
+            window.vidplotSnapshotSinglePreview();
+        }
+        const syncTime = (typeof window.vidplotGetMedia === "function" && window.vidplotGetMedia()?.currentTime) || 0;
+
+        if (!window.vidplotIsCompareMode?.()) {
+            if (typeof window.vidplotEnterCompareMode === "function") {
+                window.vidplotEnterCompareMode();
+            }
+            const a = window.vidplotGetCompareSlot?.("A");
+            if (a) {
+                a.videoUrl = window.vidplotCurrentVideoUrl || a.videoUrl;
+                enableSlotPreview("A", a, syncTime);
+            }
+        }
+
+        const generation = ++compareBGeneration;
+        setLoadDropStatus("Opening compare…", "Please wait", { busy: true });
+        startAnalyzePulse();
+        try {
+            const res = await fetch("/api/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: pathB }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.details || result.error || "Analysis failed");
+            }
+            if (generation !== compareBGeneration) return;
+            stopAnalyzePulse();
+            let jsonData = result.data;
+            if (!jsonData) {
+                const jsonRes = await fetch(result.json_url);
+                jsonData = await jsonRes.json();
+            }
+            presentCompareSlot("B", result, jsonData, generation, syncTime);
+        } catch (err) {
+            if (generation !== compareBGeneration) return;
+            console.error(err);
+            showDropError(err.message || "Compare failed");
+        } finally {
+            stopAnalyzePulse();
+            resetLoadDropStatus();
+        }
+    }
+
+    function presentCompareSlot(slot, result, jsonData, generation, syncTime) {
+        const sourcePath = result.source_path || jsonData?.format?.source_path || "";
+        const slotData = {
+            path: sourcePath,
+            filename: result.filename || jsonData?.format?.filename || "",
+            jsonData,
+            previewMode: result.preview_hint === "ffmpeg" ? "ffmpeg" : "native",
+            generation,
+            videoUrl: result.video_url,
+        };
+        if (typeof window.vidplotAssignCompareSlot === "function") {
+            window.vidplotAssignCompareSlot(slot, slotData);
+        }
+        enableSlotPreview(slot, slotData, syncTime);
+        if (typeof window.vidplotBindCompareTransport === "function") {
+            window.vidplotBindCompareTransport();
+        }
+        if (typeof window.vidplotApplyCompareWipe === "function") {
+            window.vidplotApplyCompareWipe();
+        }
+        if (typeof window.vidplotBindPlayerMedia === "function") {
+            window.vidplotBindPlayerMedia();
+        }
+        if (typeof window.vidplotOnSourceReady === "function") {
+            window.vidplotOnSourceReady(sourcePath);
+        }
+        if (typeof window.vidplotSelectCompareSlot === "function") {
+            window.vidplotSelectCompareSlot(slot);
+        }
+
+        if (result.frames_pending || jsonData?.frames_pending || !(jsonData?.frames || []).length) {
+            requestFramesAnalysis(sourcePath, jsonData, generation, { slot, compareGen: true });
+        } else if (result.qp_pending || jsonData?.qp_pending) {
+            requestQpAnalysis(sourcePath, generation, { slot, compareGen: true });
+        }
+    }
+
     function showFrameChartPlaceholder(message) {
         const chart = document.getElementById("frameChart");
         if (!chart) return;
         chart.innerHTML = `<div class="chart-placeholder">${message || "Analyzing frames…"}</div>`;
     }
 
-    function requestQpAnalysis(path, generation) {
+    function requestQpAnalysis(path, generation, opts = {}) {
         if (!path) return;
+        const compareGen = opts.compareGen;
         setAnalysisStatus("Computing Avg QP…");
         fetch("/api/analyze-qp", {
             method: "POST",
@@ -293,7 +489,8 @@ document.addEventListener("DOMContentLoaded", function () {
         })
             .then(async (res) => {
                 const data = await res.json();
-                if (generation !== analysisGeneration) return;
+                if (compareGen && generation !== compareBGeneration) return;
+                if (!compareGen && generation !== analysisGeneration) return;
                 if (!res.ok) {
                     throw new Error(data.details || data.error || "QP analysis failed");
                 }
@@ -303,21 +500,26 @@ document.addEventListener("DOMContentLoaded", function () {
                 setAnalysisStatus(data.qp_available ? "" : "Avg QP unavailable");
                 if (!data.qp_available) {
                     setTimeout(() => {
-                        if (generation === analysisGeneration) setAnalysisStatus("");
+                        if (compareGen && generation === compareBGeneration) setAnalysisStatus("");
+                        if (!compareGen && generation === analysisGeneration) setAnalysisStatus("");
                     }, 4000);
                 }
             })
             .catch((err) => {
-                if (generation !== analysisGeneration) return;
+                if (compareGen && generation !== compareBGeneration) return;
+                if (!compareGen && generation !== analysisGeneration) return;
                 console.error(err);
                 setAnalysisStatus("Avg QP failed");
                 setTimeout(() => {
-                    if (generation === analysisGeneration) setAnalysisStatus("");
+                    if (compareGen && generation === compareBGeneration) setAnalysisStatus("");
+                    if (!compareGen && generation === analysisGeneration) setAnalysisStatus("");
                 }, 4000);
             });
     }
 
-    function requestFramesAnalysis(path, jsonData, generation) {
+    function requestFramesAnalysis(path, jsonData, generation, opts = {}) {
+        const slot = opts.slot;
+        const compareGen = opts.compareGen;
         setAnalysisStatus("Analyzing frames…");
         showFrameChartPlaceholder("Analyzing frames…");
         return fetch("/api/analyze-frames", {
@@ -327,18 +529,22 @@ document.addEventListener("DOMContentLoaded", function () {
         })
             .then(async (res) => {
                 const data = await res.json();
-                if (generation !== analysisGeneration) return;
+                if (compareGen && generation !== compareBGeneration) return;
+                if (!compareGen && generation !== analysisGeneration) return;
                 if (!res.ok) {
                     throw new Error(data.details || data.error || "Frame analysis failed");
                 }
                 jsonData.frames = data.frames || [];
                 jsonData.frames_pending = false;
                 jsonData.qp_pending = !!data.qp_pending;
+                if (slot && window.vidplotCompare?.slots?.[slot]) {
+                    window.vidplotCompare.slots[slot].jsonData = jsonData;
+                }
                 window.vidplotJsonData = jsonData;
 
                 try {
                     if (typeof updatemediaInfo === "function") {
-                        updatemediaInfo(jsonData);
+                        updatemediaInfo(jsonData, slot ? { slot } : undefined);
                     }
                 } catch (err) {
                     console.error("media info refresh failed:", err);
@@ -356,13 +562,14 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
                 if (data.qp_pending) {
-                    requestQpAnalysis(path, generation);
+                    requestQpAnalysis(path, generation, opts);
                 } else {
                     setAnalysisStatus("");
                 }
             })
             .catch((err) => {
-                if (generation !== analysisGeneration) return;
+                if (compareGen && generation !== compareBGeneration) return;
+                if (!compareGen && generation !== analysisGeneration) return;
                 console.error(err);
                 setAnalysisStatus("Frame analysis failed");
                 showFrameChartPlaceholder(err.message || "Frame analysis failed");
@@ -375,6 +582,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const sourcePath = result.source_path || jsonData?.format?.source_path || "";
         window.vidplotCurrentFilename = result.filename || jsonData?.format?.filename || "";
         window.vidplotCurrentSourcePath = sourcePath;
+        window.vidplotCurrentVideoUrl = result.video_url || "";
         window.vidplotJsonData = jsonData;
         if (typeof window.vidplotResetScopes === "function") {
             window.vidplotResetScopes();
@@ -392,6 +600,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 path: sourcePath,
                 duration,
                 jsonData,
+                videoUrl: result.video_url,
             });
             if (typeof window.vidplotBindPlayerMedia === "function") {
                 window.vidplotBindPlayerMedia();
@@ -503,6 +712,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function analyzeLocalPath(path) {
         if (!path) return;
+        if (typeof window.vidplotExitCompareMode === "function" && window.vidplotIsCompareMode?.()) {
+            window.vidplotExitCompareMode();
+        }
         const generation = ++analysisGeneration;
         clearDropError();
         window.vidplotCurrentSourcePath = path;
@@ -553,7 +765,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    window.vidplotOpenPath = analyzeLocalPath;
+    window.vidplotOpenPath = queueOpenPath;
+    window.vidplotStartCompare = startCompareWithPath;
 
     function openFromUrlInput() {
         const input = document.getElementById("urlOpenInput");
@@ -566,7 +779,7 @@ document.addEventListener("DOMContentLoaded", function () {
             showDropError("URL must start with http:// or https://");
             return;
         }
-        analyzeLocalPath(raw);
+        queueOpenPath(raw);
     }
 
     const urlOpenForm = document.getElementById("urlOpenForm");
@@ -635,14 +848,14 @@ document.addEventListener("DOMContentLoaded", function () {
         if (uriList && isHttpUrl(uriList)) {
             const input = document.getElementById("urlOpenInput");
             if (input) input.value = uriList.trim();
-            analyzeLocalPath(uriList.trim());
+            queueOpenPath(uriList.trim());
             return true;
         }
         const file = dataTransfer.files && dataTransfer.files[0];
         if (!file) return false;
         const path = fileSystemPath(file);
         if (path) {
-            analyzeLocalPath(path);
+            queueOpenPath(path);
             return true;
         }
         if (hasNativeDesktopBridge()) {

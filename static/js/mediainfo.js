@@ -1,9 +1,12 @@
-function updatemediaInfo(jsonData) {
+function updatemediaInfo(jsonData, opts) {
   const mediaInfo = document.getElementById('mediaInfo');
   const streamTree = document.getElementById('streamTree');
   if (!mediaInfo || !streamTree) return;
 
   window.vidplotJsonData = jsonData;
+  if (opts?.slot && window.vidplotCompare?.enabled) {
+    window.vidplotCompare.activeSlot = opts.slot;
+  }
 
   const filename = window.vidplotCurrentFilename
     || jsonData?.format?.filename

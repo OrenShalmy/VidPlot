@@ -67,15 +67,35 @@ document.addEventListener("DOMContentLoaded", function () {
     const active = new Set();
     let abortController = null;
     let objectUrl = null;
+    const compareObjectUrls = { A: null, B: null };
     let requestToken = 0;
     let playTimer = null;
     let lastRequestKey = "";
     let boundMedia = null;
 
-    function clampScopeTime(timeSec) {
+    function isCompareMode() {
+        return typeof window.vidplotIsCompareMode === "function" && window.vidplotIsCompareMode();
+    }
+
+    function statusElement() {
+        if (isCompareMode()) {
+            return document.getElementById("scopeStatusCompare") || statusEl;
+        }
+        return statusEl;
+    }
+
+    function legendElement() {
+        if (isCompareMode()) {
+            return document.getElementById("scopeLegendCompare") || legendEl;
+        }
+        return legendEl;
+    }
+
+    function clampScopeTime(timeSec, jsonData) {
         let t = Number(timeSec);
         if (!Number.isFinite(t) || t < 0) t = 0;
-        const frames = window.vidplotJsonData?.frames;
+        const data = jsonData || window.vidplotJsonData;
+        const frames = data?.frames;
         if (Array.isArray(frames) && frames.length) {
             let lastPts = null;
             for (const frame of frames) {
@@ -89,9 +109,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             if (lastPts != null) return Math.min(t, lastPts);
         }
-        const duration = Number(window.vidplotJsonData?.format?.duration);
+        const duration = Number(data?.format?.duration);
         if (Number.isFinite(duration) && duration > 0) {
-            const stream = (window.vidplotJsonData?.streams || []).find((s) => s.codec_type === "video");
+            const stream = (data?.streams || []).find((s) => s.codec_type === "video");
             const rate = stream?.avg_frame_rate || stream?.r_frame_rate;
             let fps = 25;
             if (typeof rate === "string" && rate.includes("/")) {
@@ -115,16 +135,17 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function setStatus(message, isError) {
-        if (!statusEl) return;
+        const el = statusElement();
+        if (!el) return;
         if (!message) {
-            statusEl.hidden = true;
-            statusEl.textContent = "";
-            statusEl.classList.remove("is-error");
+            el.hidden = true;
+            el.textContent = "";
+            el.classList.remove("is-error");
             return;
         }
-        statusEl.hidden = false;
-        statusEl.textContent = message;
-        statusEl.classList.toggle("is-error", !!isError);
+        el.hidden = false;
+        el.textContent = message;
+        el.classList.toggle("is-error", !!isError);
     }
 
     function selectedFilters() {
@@ -165,15 +186,16 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateLegend(filters) {
-        if (!legendEl) return;
+        const legend = legendElement();
+        if (!legend) return;
         const names = (filters || []).filter((name) => SCOPE_LEGENDS[name]);
-        updateScopePip(filters || names);
+        if (!isCompareMode()) updateScopePip(filters || names);
         if (!names.length) {
-            legendEl.hidden = true;
-            legendEl.innerHTML = "";
+            legend.hidden = true;
+            legend.innerHTML = "";
             return;
         }
-        legendEl.innerHTML = names.map((name) => {
+        legend.innerHTML = names.map((name) => {
             const info = SCOPE_LEGENDS[name];
             const channels = (info.channels || [])
                 .map((ch) => (
@@ -191,7 +213,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 + `</div>`
             );
         }).join("");
-        legendEl.hidden = false;
+        legend.hidden = false;
     }
 
     function sourcePath() {
@@ -207,6 +229,15 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    function revokeCompareUrls() {
+        ["A", "B"].forEach((slot) => {
+            if (compareObjectUrls[slot]) {
+                URL.revokeObjectURL(compareObjectUrls[slot]);
+                compareObjectUrls[slot] = null;
+            }
+        });
+    }
+
     function clearPreview() {
         requestToken += 1;
         if (abortController) {
@@ -214,10 +245,22 @@ document.addEventListener("DOMContentLoaded", function () {
             abortController = null;
         }
         revokePreviewUrl();
+        revokeCompareUrls();
         preview.removeAttribute("src");
         preview.hidden = true;
         stage.classList.remove("has-scopes");
         stage.classList.remove("has-scope-pip");
+        ["A", "B"].forEach((slot) => {
+            const img = document.getElementById(`scopePreview${slot}`);
+            if (img) {
+                img.removeAttribute("src");
+                img.hidden = true;
+            }
+            const layer = document.querySelector(`.compare-layer[data-slot="${slot}"] .compare-media`);
+            if (layer) layer.classList.remove("has-scopes");
+        });
+        const comparePane = document.getElementById("comparePane");
+        if (comparePane) comparePane.classList.remove("has-scopes");
         updateLegend([]);
         setStatus("");
         lastRequestKey = "";
@@ -233,6 +276,28 @@ document.addEventListener("DOMContentLoaded", function () {
         else updateLegend(selectedFilters());
     }
 
+    async function fetchScopeBlob(path, jsonData, time, filters, signal) {
+        const res = await fetch("/api/scopes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                path,
+                time: clampScopeTime(time, jsonData),
+                filters,
+            }),
+            signal,
+        });
+        if (!res.ok) {
+            let details = "Scope preview failed";
+            try {
+                const err = await res.json();
+                details = err.details || err.error || details;
+            } catch (_) { /* ignore */ }
+            throw new Error(details);
+        }
+        return res.blob();
+    }
+
     async function refreshScopes(force) {
         const filters = selectedFilters();
         if (!filters.length) {
@@ -240,15 +305,62 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         updateLegend(filters);
+        const m = media();
+        const time = Number(m?.currentTime) || 0;
+
+        if (isCompareMode()) {
+            const slotA = window.vidplotGetCompareSlot?.("A");
+            const slotB = window.vidplotGetCompareSlot?.("B");
+            if (!slotA?.path || !slotB?.path) {
+                setStatus("Both videos required for compare scopes", true);
+                return;
+            }
+            const key = `cmp|${slotA.path}|${slotB.path}|${filters.join(",")}|${time.toFixed(2)}`;
+            if (!force && key === lastRequestKey) return;
+            lastRequestKey = key;
+
+            if (abortController) abortController.abort();
+            abortController = new AbortController();
+            const token = ++requestToken;
+            setStatus("Rendering scopes…");
+
+            try {
+                const [blobA, blobB] = await Promise.all([
+                    fetchScopeBlob(slotA.path, slotA.jsonData, time, filters, abortController.signal),
+                    fetchScopeBlob(slotB.path, slotB.jsonData, time, filters, abortController.signal),
+                ]);
+                if (token !== requestToken) return;
+                revokeCompareUrls();
+                compareObjectUrls.A = URL.createObjectURL(blobA);
+                compareObjectUrls.B = URL.createObjectURL(blobB);
+                const imgA = document.getElementById("scopePreviewA");
+                const imgB = document.getElementById("scopePreviewB");
+                if (imgA) {
+                    imgA.src = compareObjectUrls.A;
+                    imgA.hidden = false;
+                }
+                if (imgB) {
+                    imgB.src = compareObjectUrls.B;
+                    imgB.hidden = false;
+                }
+                document.querySelectorAll(".compare-media").forEach((el) => el.classList.add("has-scopes"));
+                const comparePane = document.getElementById("comparePane");
+                if (comparePane) comparePane.classList.add("has-scopes");
+                setStatus("");
+            } catch (err) {
+                if (err && err.name === "AbortError") return;
+                if (token !== requestToken) return;
+                console.error(err);
+                setStatus(err.message || "Scope preview failed", true);
+            }
+            return;
+        }
+
         const path = sourcePath();
         if (!path) {
             setStatus("No source path for scopes", true);
             return;
         }
-        const m = media();
-        // HTML5 "ended" often parks at duration, past the last packet PTS.
-        // Seeking there makes FFmpeg fail the scope JPEG encode.
-        const time = clampScopeTime(Number(m?.currentTime) || 0);
         const key = `${path}|${filters.join(",")}|${time.toFixed(2)}`;
         if (!force && key === lastRequestKey) return;
         lastRequestKey = key;
@@ -259,22 +371,7 @@ document.addEventListener("DOMContentLoaded", function () {
         setStatus("Rendering scopes…");
 
         try {
-            const res = await fetch("/api/scopes", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path, time, filters }),
-                signal: abortController.signal,
-            });
-            if (token !== requestToken) return;
-            if (!res.ok) {
-                let details = "Scope preview failed";
-                try {
-                    const err = await res.json();
-                    details = err.details || err.error || details;
-                } catch (_) { /* ignore */ }
-                throw new Error(details);
-            }
-            const blob = await res.blob();
+            const blob = await fetchScopeBlob(path, window.vidplotJsonData, time, filters, abortController.signal);
             if (token !== requestToken) return;
             revokePreviewUrl();
             objectUrl = URL.createObjectURL(blob);
@@ -363,6 +460,13 @@ document.addEventListener("DOMContentLoaded", function () {
             refreshScopes(true);
         }
     };
+    window.vidplotOnCompareModeChange = function (enabled) {
+        lastRequestKey = "";
+        bindMediaListeners();
+        if (!enabled) clearPreview();
+        else if (active.size) refreshScopes(true);
+    };
+
     window.vidplotRefreshScopes = function () {
         if (active.size) refreshScopes(true);
     };

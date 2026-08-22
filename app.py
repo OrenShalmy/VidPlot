@@ -22,6 +22,9 @@ QP_HEADER_GAP_RE = re.compile(r'\d\s{3,}\d')
 # Currently opened source video (original path; not copied)
 current_source_path = None
 
+# v= cache tokens → path (compare mode needs multiple clips servable via /media/source)
+opened_media_registry = {}
+
 # Codecs Chromium typically cannot play in <video> — use ffmpeg→canvas preview
 HARD_PREVIEW_CODECS = frozenset({
     'prores', 'prores_aw', 'prores_ks', 'prores_lt', 'prores_hq',
@@ -43,6 +46,24 @@ def preview_hint_for_codec(codec):
     if codec in HARD_PREVIEW_CODECS or codec.startswith('prores') or codec.startswith('yuv'):
         return 'ffmpeg'
     return 'native'
+
+
+def register_opened_media(video_path):
+    """Remember a path so /media/source?v=<token> can stream it (compare / re-open)."""
+    key = media_cache_key(video_path)
+    opened_media_registry[key] = video_path
+    return key
+
+
+def resolve_media_path_from_token(token):
+    if not token:
+        return None
+    path = opened_media_registry.get(token)
+    if path:
+        return path
+    if current_source_path and token == media_cache_key(current_source_path):
+        return current_source_path
+    return None
 
 
 def media_cache_key(video_path):
@@ -507,6 +528,7 @@ def analyze_video_file(video_path):
         json.dump(json_data, f)
 
     current_source_path = video_path
+    register_opened_media(video_path)
     duration = float(json_data.get('format', {}).get('duration', 0) or 0)
     # Unique ?v= per file so Chromium does not reuse a cached /media/source clip.
     video_url = video_path if remote else local_video_playback_url(video_path)
@@ -944,20 +966,17 @@ def service_worker():
 
 @app.route('/media/source')
 def serve_source():
-    """Stream the currently opened local video, or redirect to a remote URL."""
-    if not current_source_path:
-        abort(404)
-    if is_http_url(current_source_path):
-        return redirect(current_source_path)
-    if not os.path.isfile(current_source_path):
-        abort(404)
-
+    """Stream a registered local video, or redirect to a remote URL."""
     token = request.args.get('v', '')
-    expected = media_cache_key(current_source_path)
-    if token != expected:
+    path = resolve_media_path_from_token(token)
+    if not path:
+        abort(404)
+    if is_http_url(path):
+        return redirect(path)
+    if not os.path.isfile(path):
         abort(404)
 
-    return no_store_video_response(send_file(current_source_path))
+    return no_store_video_response(send_file(path))
 
 
 @app.route('/media/logs/<path:filename>')

@@ -66,7 +66,7 @@
         return video;
     }
 
-    function createFfmpegAdapter({ video, canvas, path, duration, fps }) {
+    function createFfmpegAdapter({ video, canvas, path, duration, fps, initialTime = 0 }) {
         const events = createEventTarget();
         let currentTime = 0;
         let paused = true;
@@ -237,7 +237,9 @@
         }
 
         showCanvas();
-        fetchFrame(0, { seeked: true, force: true }).then(() => {
+        const startT = Math.max(0, Number(initialTime) || 0);
+        currentTime = Math.min(maxT === Infinity ? startT : maxT, startT);
+        fetchFrame(currentTime, { seeked: true, force: true }).then(() => {
             events.dispatch("loadedmetadata");
             events.dispatch("loadeddata");
         });
@@ -366,22 +368,290 @@
         }
     }
 
+    const slotAdapters = { A: null, B: null };
+    let singleSnapshot = null;
+
+    function createCompareSyncAdapter(apiA, apiB) {
+        const events = createEventTarget();
+        const master = apiA || apiB;
+
+        function both(fn) {
+            if (apiA && fn) {
+                try {
+                    fn(apiA);
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            if (apiB && fn) {
+                try {
+                    fn(apiB);
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+        }
+
+        function minDuration() {
+            const da = Number(apiA?.duration);
+            const db = Number(apiB?.duration);
+            if (Number.isFinite(da) && da > 0 && Number.isFinite(db) && db > 0) {
+                return Math.min(da, db);
+            }
+            if (Number.isFinite(da) && da > 0) return da;
+            if (Number.isFinite(db) && db > 0) return db;
+            return 0;
+        }
+
+        const api = {
+            get currentTime() {
+                return master ? master.currentTime : 0;
+            },
+            set currentTime(t) {
+                both((a) => {
+                    if (typeof a.seekTo === "function") a.seekTo(t, true);
+                    else a.currentTime = t;
+                });
+            },
+            get duration() {
+                return minDuration();
+            },
+            get paused() {
+                if (apiA && !apiA.paused) return false;
+                if (apiB && !apiB.paused) return false;
+                return true;
+            },
+            get ended() {
+                const d = minDuration();
+                return d > 0 && api.currentTime >= d - 0.001 && api.paused;
+            },
+            get playbackRate() {
+                return master ? master.playbackRate : 1;
+            },
+            set playbackRate(r) {
+                both((a) => { a.playbackRate = r; });
+            },
+            get readyState() {
+                return master ? master.readyState : 0;
+            },
+            get dataset() {
+                return master?.dataset || {};
+            },
+            get videoWidth() {
+                return master ? master.videoWidth : 0;
+            },
+            get videoHeight() {
+                return master ? master.videoHeight : 0;
+            },
+            play() {
+                return Promise.all([
+                    apiA ? apiA.play() : Promise.resolve(),
+                    apiB ? apiB.play() : Promise.resolve(),
+                ]).then(() => undefined);
+            },
+            pause() {
+                both((a) => a.pause());
+            },
+            fastSeek(t) {
+                both((a) => {
+                    if (typeof a.fastSeek === "function") a.fastSeek(t);
+                    else if (typeof a.seekTo === "function") a.seekTo(t, true);
+                    else a.currentTime = t;
+                });
+            },
+            load() {},
+            addEventListener(type, fn) {
+                events.addEventListener(type, fn);
+                if (master) master.addEventListener(type, fn);
+            },
+            removeEventListener(type, fn) {
+                events.removeEventListener(type, fn);
+                if (master) master.removeEventListener(type, fn);
+            },
+            seekTo(t, immediate) {
+                both((a) => {
+                    if (typeof a.seekTo === "function") a.seekTo(t, immediate);
+                    else a.currentTime = t;
+                });
+            },
+            _vidplotMode: "compare-sync",
+        };
+
+        if (master) {
+            master.addEventListener("timeupdate", () => {
+                events.dispatch("timeupdate");
+                if (apiA && apiB && apiA !== apiB) {
+                    const drift = Math.abs((apiB.currentTime || 0) - (apiA.currentTime || 0));
+                    if (drift > 0.06 && typeof apiB.seekTo === "function") {
+                        apiB.seekTo(apiA.currentTime, false);
+                    }
+                }
+            });
+            master.addEventListener("seeked", () => events.dispatch("seeked"));
+            master.addEventListener("play", () => events.dispatch("play"));
+            master.addEventListener("pause", () => events.dispatch("pause"));
+            master.addEventListener("ended", () => events.dispatch("ended"));
+        }
+
+        return api;
+    }
+
+    function destroySlotAdapter(slot) {
+        const api = slotAdapters[slot];
+        if (api && typeof api.destroy === "function") {
+            api.destroy();
+        }
+        slotAdapters[slot] = null;
+    }
+
+    function bindCompareTransport() {
+        const transport = getTransport();
+        const sync = createCompareSyncAdapter(slotAdapters.A, slotAdapters.B);
+        transport.api = sync;
+        transport.video = sync;
+        window.vidplotMedia = sync;
+    }
+
+    /**
+     * Enable preview for compare slot A or B (separate DOM elements).
+     */
+    function vidplotEnableSlotPreviewMode(slot, opts) {
+        const s = slot === "B" ? "B" : "A";
+        const video = opts?.video || document.getElementById(s === "B" ? "videoPlayerB" : "videoPlayerA");
+        const canvas = opts?.canvas || document.getElementById(s === "B" ? "previewCanvasB" : "previewCanvasA");
+        const source = opts?.source;
+        const mode = opts?.mode === "ffmpeg" ? "ffmpeg" : "native";
+        const path = opts?.path || "";
+        const duration = Number(opts?.duration);
+        const fps = Number(opts?.fps) || estimateFps(opts?.jsonData);
+        const initialTime = Number(opts?.initialTime) || 0;
+        const videoUrl = opts?.videoUrl;
+
+        destroySlotAdapter(s);
+
+        setPreviewVisibility(mode, video, canvas);
+
+        let api;
+        if (mode === "ffmpeg") {
+            api = createFfmpegAdapter({
+                video,
+                canvas,
+                path,
+                duration: Number.isFinite(duration) && duration > 0
+                    ? duration
+                    : parseFloat(opts?.jsonData?.format?.duration) || NaN,
+                fps,
+                initialTime,
+            });
+            if (video) video.dataset.vidplotSource = path;
+            if (canvas) canvas.dataset.vidplotSource = path;
+        } else {
+            if (source && videoUrl) {
+                source.src = videoUrl;
+            }
+            if (video) {
+                video.hidden = false;
+                video.style.display = "block";
+                video.dataset.vidplotSource = path;
+                if (initialTime > 0) {
+                    video.addEventListener("loadeddata", () => {
+                        try {
+                            video.currentTime = initialTime;
+                        } catch (_) { /* ignore */ }
+                    }, { once: true });
+                }
+                video.load();
+            }
+            api = createNativeAdapter(video);
+        }
+
+        slotAdapters[s] = api;
+        if (window.vidplotCompare?.enabled) {
+            bindCompareTransport();
+        }
+        return api;
+    }
+
+    function vidplotDestroySlotPreview(slot) {
+        destroySlotAdapter(slot === "B" ? "B" : "A");
+        if (window.vidplotCompare?.enabled) {
+            bindCompareTransport();
+        }
+    }
+
+    function vidplotSnapshotSinglePreview() {
+        const m = vidplotGetMedia();
+        singleSnapshot = {
+            mode: window.vidplotPreviewMode || "native",
+            path: window.vidplotCurrentSourcePath || "",
+            duration: parseFloat(window.vidplotJsonData?.format?.duration) || NaN,
+            jsonData: window.vidplotJsonData,
+            videoUrl: window.vidplotCurrentVideoUrl || "",
+            initialTime: m?.currentTime || 0,
+        };
+    }
+
+    function vidplotRestoreSinglePreview() {
+        if (!singleSnapshot) return;
+        const snap = { ...singleSnapshot };
+        singleSnapshot = null;
+        destroySlotAdapter("A");
+        destroySlotAdapter("B");
+        const video = document.getElementById("videoPlayer");
+        const canvas = document.getElementById("previewCanvas");
+        const source = document.getElementById("videoSource");
+        if (source && snap.videoUrl) {
+            source.src = snap.videoUrl;
+        }
+        vidplotEnablePreviewMode({
+            ...snap,
+            initialTime: snap.initialTime,
+        });
+        if (Number.isFinite(snap.initialTime) && snap.initialTime > 0) {
+            const m = vidplotGetMedia();
+            if (m) {
+                if (typeof m.seekTo === "function") m.seekTo(snap.initialTime, true);
+                else m.currentTime = snap.initialTime;
+            }
+        }
+    }
+
+    function vidplotBindCompareTransport() {
+        if (window.vidplotCompare?.enabled) {
+            bindCompareTransport();
+        }
+    }
+
     /**
      * Activate native or ffmpeg preview for the current source.
      * @param {{ mode: 'native'|'ffmpeg', path: string, duration?: number, fps?: number, jsonData?: object }} opts
      */
     function vidplotEnablePreviewMode(opts) {
+        if (window.vidplotCompare?.enabled) {
+            return vidplotEnableSlotPreviewMode("A", {
+                ...opts,
+                video: document.getElementById("videoPlayerA"),
+                canvas: document.getElementById("previewCanvasA"),
+                source: document.getElementById("videoSourceA"),
+                videoUrl: opts?.videoUrl,
+            });
+        }
+
         const video = document.getElementById("videoPlayer");
         const canvas = document.getElementById("previewCanvas");
         const mode = opts?.mode === "ffmpeg" ? "ffmpeg" : "native";
         const path = opts?.path || window.vidplotCurrentSourcePath || "";
+        const videoUrl = opts?.videoUrl;
         const duration = Number(opts?.duration);
+        const initialTime = Number(opts?.initialTime) || 0;
         const fps = Number(opts?.fps) || estimateFps(opts?.jsonData || window.vidplotJsonData);
         const transport = getTransport();
 
         if (transport.api && typeof transport.api.destroy === "function") {
             transport.api.destroy();
         }
+
+        singleSnapshot = { ...opts, videoUrl: opts?.videoUrl };
 
         window.vidplotPreviewMode = mode;
         setPreviewVisibility(mode, video, canvas);
@@ -396,11 +666,19 @@
                     ? duration
                     : parseFloat(window.vidplotJsonData?.format?.duration) || NaN,
                 fps,
+                initialTime,
             });
             if (video) video.dataset.vidplotSource = path;
             if (canvas) canvas.dataset.vidplotSource = path;
         } else {
             api = createNativeAdapter(video);
+            if (video && Number.isFinite(initialTime) && initialTime > 0) {
+                video.addEventListener("loadeddata", () => {
+                    try {
+                        video.currentTime = initialTime;
+                    } catch (_) { /* ignore */ }
+                }, { once: true });
+            }
             if (video) {
                 video.hidden = false;
                 video.style.display = "block";
@@ -414,7 +692,14 @@
         return api;
     }
 
-    function vidplotGetMedia() {
+    function vidplotGetMedia(slot) {
+        if (slot === "A" || slot === "B") {
+            return slotAdapters[slot] || null;
+        }
+        if (window.vidplotCompare?.enabled) {
+            const transport = getTransport();
+            if (transport.api) return transport.api;
+        }
         const transport = getTransport();
         if (transport.api) return transport.api;
         if (window.vidplotMedia) return window.vidplotMedia;
@@ -422,6 +707,11 @@
     }
 
     window.vidplotEnablePreviewMode = vidplotEnablePreviewMode;
+    window.vidplotEnableSlotPreviewMode = vidplotEnableSlotPreviewMode;
+    window.vidplotDestroySlotPreview = vidplotDestroySlotPreview;
+    window.vidplotSnapshotSinglePreview = vidplotSnapshotSinglePreview;
+    window.vidplotRestoreSinglePreview = vidplotRestoreSinglePreview;
+    window.vidplotBindCompareTransport = vidplotBindCompareTransport;
     window.vidplotGetMedia = vidplotGetMedia;
     window.vidplotPreviewMode = window.vidplotPreviewMode || "native";
 })();
