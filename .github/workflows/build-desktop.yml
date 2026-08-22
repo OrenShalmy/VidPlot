@@ -71,7 +71,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
-            xdg-utils libatspi2.0-0 libuuid1 libsecret-1-0
+            xdg-utils libatspi2.0-0 libuuid1 libsecret-1-0 \
+            fuse libfuse2
 
       - name: Install Python dependencies
         run: |
@@ -106,17 +107,36 @@ jobs:
 
       - name: List packaged output
         run: |
-          node -e "const fs=require('fs'); const p='dist-electron'; if(!fs.existsSync(p)){console.error('Missing '+p); process.exit(1);} const walk=(d)=>fs.readdirSync(d).flatMap(n=>{const x=require('path').join(d,n); const s=fs.statSync(x); return s.isDirectory()?walk(x):[x];}); const z=walk(p).filter(x=>x.toLowerCase().endsWith('.zip')); console.log('Zips:', z);"
+          node -e "const fs=require('fs'); const p='dist-electron'; if(!fs.existsSync(p)){console.error('Missing '+p); process.exit(1);} const walk=(d)=>fs.readdirSync(d).flatMap(n=>{const x=require('path').join(d,n); const s=fs.statSync(x); return s.isDirectory()?walk(x):[x];}); console.log(walk(p).join('\n'));"
 
-      - name: Verify expected zip exists
+      - name: Stage release assets
+        shell: bash
         run: |
-          node -e "const fs=require('fs'); const zip='dist-electron/${{ matrix.artifact }}.zip'; if(!fs.existsSync(zip)){console.error('Missing '+zip); process.exit(1);} console.log('Found', zip);"
+          set -euo pipefail
+          mkdir -p staged
+          # Portable zip (all platforms)
+          zip="dist-electron/${{ matrix.artifact }}.zip"
+          test -f "$zip"
+          cp "$zip" staged/
+          # Windows NSIS installer (file associations)
+          if [[ "${{ matrix.kind }}" == "win" ]]; then
+            setup="dist-electron/${{ matrix.artifact }}-Setup.exe"
+            test -f "$setup"
+            cp "$setup" staged/
+          fi
+          # Linux AppImage (MIME / Open with)
+          if [[ "${{ matrix.kind }}" == "linux" ]]; then
+            appimage="dist-electron/${{ matrix.artifact }}.AppImage"
+            test -f "$appimage"
+            cp "$appimage" staged/
+          fi
+          ls -lah staged
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist-electron/${{ matrix.artifact }}.zip
+          path: staged/*
           if-no-files-found: error
 
   release:
@@ -156,6 +176,12 @@ jobs:
           name: VidPlot ${{ steps.tag.outputs.name }}
           generate_release_notes: true
           body: |
+            ## Downloads
+
+            - **macOS:** `VidPlot-macOS-arm64.zip` (Open with works after first launch)
+            - **Windows:** prefer `VidPlot-Windows-*-Setup.exe` for file associations; zip is portable
+            - **Linux:** prefer `VidPlot-Linux-*.AppImage` for MIME / Open with; zip is portable
+
             ## macOS first launch
 
             Release builds are not notarized. If macOS says **"VidPlot.app is damaged"**, the download is quarantined — not corrupt.
@@ -167,12 +193,20 @@ jobs:
 
             FFmpeg must be installed separately (`brew install ffmpeg` on macOS;
             `apt install ffmpeg` on Debian/Ubuntu).
+
+            ## Open with VidPlot
+
+            After install, use **Open with → VidPlot** (or set as default in OS settings) for common video types.
           files: |
             artifacts/VidPlot-macOS-arm64.zip
             artifacts/VidPlot-Windows-x64.zip
+            artifacts/VidPlot-Windows-x64-Setup.exe
             artifacts/VidPlot-Windows-arm64.zip
+            artifacts/VidPlot-Windows-arm64-Setup.exe
             artifacts/VidPlot-Linux-x64.zip
+            artifacts/VidPlot-Linux-x64.AppImage
             artifacts/VidPlot-Linux-arm64.zip
+            artifacts/VidPlot-Linux-arm64.AppImage
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

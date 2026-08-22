@@ -71,9 +71,11 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 2. Install [FFmpeg](https://ffmpeg.org/) so `ffprobe` and `ffmpeg` are on your `PATH` (or set paths in Options).
 3. Run the app, drop a video, and wait for properties → frame graph → QP (when supported).
 
+**Open with VidPlot:** after install, use **Open with → VidPlot** from Finder / Explorer / your file manager (or set VidPlot as the default app for a type in OS settings). On Windows use the **Setup** installer for associations; on Linux prefer the **AppImage**. macOS zip of `.app` registers after the first launch.
+
 **macOS downloaded builds** are not notarized. If Gatekeeper blocks the app, Control-click → Open, or see release notes for quarantine workarounds.
 
-**Develop locally:** `git clone` → `pip install -r requirements.txt` → `npm install` → `npm run electron` (uses `venv/` automatically).
+**Develop locally:** `git clone` → `pip install -r requirements.txt` → `npm install` → `npm run electron` (uses `venv/` automatically). To smoke-test OS open: `npm run electron -- /path/to/clip.mp4`.
 
 ## License
 

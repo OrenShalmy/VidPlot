@@ -768,6 +768,16 @@ document.addEventListener("DOMContentLoaded", function () {
     window.vidplotOpenPath = queueOpenPath;
     window.vidplotStartCompare = startCompareWithPath;
 
+    // OS "Open with" / cold-start argv → same replace-or-compare flow as drop
+    if (window.vidplotDesktop && typeof window.vidplotDesktop.onOpenPath === "function") {
+        window.vidplotDesktop.onOpenPath((filePath) => {
+            if (filePath) queueOpenPath(filePath);
+        });
+        if (typeof window.vidplotDesktop.notifyReady === "function") {
+            window.vidplotDesktop.notifyReady();
+        }
+    }
+
     function openFromUrlInput() {
         const input = document.getElementById("urlOpenInput");
         const raw = (input?.value || "").trim();

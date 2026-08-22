@@ -40,6 +40,28 @@
         ]
       }
     ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "mp4",
+          "mov",
+          "m4v",
+          "mkv",
+          "avi",
+          "ts",
+          "m2ts",
+          "mts",
+          "webm",
+          "h264",
+          "h265",
+          "hevc"
+        ],
+        "name": "Video",
+        "description": "Video file",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "mac": {
       "category": "public.app-category.video",
       "icon": "static/icons/VidPlot.icns",
@@ -52,15 +74,33 @@
     "win": {
       "icon": "static/icons/VidPlot.ico",
       "target": [
-        "zip"
+        "zip",
+        "nsis"
       ],
       "artifactName": "VidPlot-Windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "VidPlot-Windows-${arch}-Setup.${ext}"
     },
     "linux": {
       "category": "Video",
       "icon": "static/icons/icon-512x512.png",
       "target": [
-        "zip"
+        "zip",
+        "AppImage"
+      ],
+      "mimeTypes": [
+        "video/mp4",
+        "video/quicktime",
+        "video/x-matroska",
+        "video/x-msvideo",
+        "video/mp2t",
+        "video/webm",
+        "video/x-m4v"
       ],
       "artifactName": "VidPlot-Linux-${arch}.${ext}"
     }

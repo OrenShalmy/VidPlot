@@ -19,7 +19,7 @@ delete env.ELECTRON_NO_ASAR;
 delete env.ELECTRON_NO_ATTACH_CONSOLE;
 delete env.VSCODE_INSPECTOR_OPTIONS;
 
-const child = spawn(electron, [path.join(__dirname, '..')], {
+const child = spawn(electron, [path.join(__dirname, '..'), ...process.argv.slice(2)], {
     cwd: path.join(__dirname, '..'),
     env,
     stdio: 'inherit',

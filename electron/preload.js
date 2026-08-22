@@ -11,4 +11,15 @@ contextBridge.exposeInMainWorld('vidplotDesktop', {
             return '';
         }
     },
+    onOpenPath: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const handler = (_event, filePath) => {
+            callback(filePath);
+        };
+        ipcRenderer.on('vidplot:open-path', handler);
+        return () => ipcRenderer.removeListener('vidplot:open-path', handler);
+    },
+    notifyReady: () => {
+        ipcRenderer.send('vidplot:renderer-ready');
+    },
 });
