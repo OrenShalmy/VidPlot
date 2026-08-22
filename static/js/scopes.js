@@ -72,6 +72,44 @@ document.addEventListener("DOMContentLoaded", function () {
     let lastRequestKey = "";
     let boundMedia = null;
 
+    function clampScopeTime(timeSec) {
+        let t = Number(timeSec);
+        if (!Number.isFinite(t) || t < 0) t = 0;
+        const frames = window.vidplotJsonData?.frames;
+        if (Array.isArray(frames) && frames.length) {
+            let lastPts = null;
+            for (const frame of frames) {
+                const pts = parseFloat(
+                    frame.best_effort_timestamp_time
+                    ?? frame.pkt_pts_time
+                    ?? frame.pts_time
+                );
+                if (!Number.isFinite(pts)) continue;
+                if (lastPts == null || pts > lastPts) lastPts = pts;
+            }
+            if (lastPts != null) return Math.min(t, lastPts);
+        }
+        const duration = Number(window.vidplotJsonData?.format?.duration);
+        if (Number.isFinite(duration) && duration > 0) {
+            const stream = (window.vidplotJsonData?.streams || []).find((s) => s.codec_type === "video");
+            const rate = stream?.avg_frame_rate || stream?.r_frame_rate;
+            let fps = 25;
+            if (typeof rate === "string" && rate.includes("/")) {
+                const [a, b] = rate.split("/").map(Number);
+                if (b && a) fps = a / b;
+            } else {
+                const n = parseFloat(rate);
+                if (Number.isFinite(n) && n > 0) fps = n;
+            }
+            return Math.min(t, Math.max(0, duration - (1 / fps)));
+        }
+        const mediaDur = Number(media()?.duration);
+        if (Number.isFinite(mediaDur) && mediaDur > 0) {
+            return Math.min(t, Math.max(0, mediaDur - 0.04));
+        }
+        return t;
+    }
+
     function media() {
         return (typeof window.vidplotGetMedia === "function" && window.vidplotGetMedia()) || videoEl;
     }
@@ -208,7 +246,9 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         const m = media();
-        const time = Number(m?.currentTime) || 0;
+        // HTML5 "ended" often parks at duration, past the last packet PTS.
+        // Seeking there makes FFmpeg fail the scope JPEG encode.
+        const time = clampScopeTime(Number(m?.currentTime) || 0);
         const key = `${path}|${filters.join(",")}|${time.toFixed(2)}`;
         if (!force && key === lastRequestKey) return;
         lastRequestKey = key;

@@ -270,12 +270,21 @@ function updatemediaInfo(jsonData) {
     `;
   }
 
+  /** ffprobe `level` is codec-specific: AVC = level×10, HEVC = level×30. */
+  function formatCodecLevel(stream) {
+    if (stream.level == null || stream.level === -99) return null;
+    const raw = Number(stream.level);
+    if (!Number.isFinite(raw)) return stream.level;
+    if (raw < 10) return String(raw);
+    const codec = String(stream.codec_name || '').toLowerCase();
+    const divisor = (codec === 'hevc' || codec === 'h265') ? 30 : 10;
+    return (raw / divisor).toFixed(1);
+  }
+
   function renderStreamProperties(stream, listIndex) {
     const type = stream.codec_type || 'stream';
     const gopSize = type === 'video' ? detectGOP(jsonData.frames) : null;
-    const level = stream.level != null && stream.level !== -99
-      ? (Number(stream.level) >= 10 ? (Number(stream.level) / 10).toFixed(1) : stream.level)
-      : null;
+    const level = formatCodecLevel(stream);
 
     let typeRows = '';
     if (type === 'video') {

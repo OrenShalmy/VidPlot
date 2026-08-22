@@ -736,15 +736,92 @@ def build_scope_filter_complex(filters, preview_width=960, bit_depth=8):
     return ';'.join(parts), names
 
 
+def _parse_rate(value, default=25.0):
+    """Parse ffprobe rate strings like '25/1' into a float."""
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text or text.upper() == 'N/A':
+        return default
+    try:
+        if '/' in text:
+            num, den = text.split('/', 1)
+            num_f = float(num)
+            den_f = float(den)
+            if den_f:
+                rate = num_f / den_f
+                return rate if rate > 0 else default
+        rate = float(text)
+        return rate if rate > 0 else default
+    except (TypeError, ValueError, ZeroDivisionError):
+        return default
+
+
+def clamp_seek_time(video_path, time_sec):
+    """Keep input seeks on a decodable frame.
+
+    HTML5 ``ended`` often sets ``currentTime`` to container duration, which can
+    sit past the last video packet PTS. Seeking there makes ffmpeg emit no frame
+    and fail the MJPEG encode with a misleading color-range error.
+    """
+    try:
+        t = max(0.0, float(time_sec))
+    except (TypeError, ValueError):
+        return 0.0
+
+    last_pts = None
+    duration = None
+    fps = 25.0
+    try:
+        _, json_path = analysis_json_paths(video_path)
+        if os.path.isfile(json_path):
+            with open(json_path, 'r', encoding='utf-8') as handle:
+                data = json.load(handle)
+            for frame in data.get('frames') or []:
+                for key in (
+                    'best_effort_timestamp_time',
+                    'pkt_pts_time',
+                    'pts_time',
+                ):
+                    raw = frame.get(key)
+                    if raw is None:
+                        continue
+                    try:
+                        pts = float(raw)
+                    except (TypeError, ValueError):
+                        continue
+                    if last_pts is None or pts > last_pts:
+                        last_pts = pts
+                    break
+            try:
+                duration = float((data.get('format') or {}).get('duration'))
+            except (TypeError, ValueError):
+                duration = None
+            for stream in data.get('streams') or []:
+                if stream.get('codec_type') != 'video':
+                    continue
+                fps = _parse_rate(
+                    stream.get('avg_frame_rate') or stream.get('r_frame_rate'),
+                    default=fps,
+                )
+                break
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    if last_pts is not None and last_pts >= 0:
+        return min(t, last_pts)
+    if duration is not None and duration > 0:
+        frame_dur = 1.0 / fps if fps > 0 else 0.04
+        return min(t, max(0.0, duration - frame_dur))
+    return t
+
+
 def render_preview_jpeg(video_path, time_sec, max_width=1920):
     """Seek to time_sec and render one JPEG frame for canvas preview."""
     video_path = validate_video_path(video_path)
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
-    try:
-        t = max(0.0, float(time_sec))
-    except (TypeError, ValueError):
-        t = 0.0
+    t = clamp_seek_time(video_path, time_sec)
     try:
         width = max(160, min(3840, int(max_width or 1920)))
     except (TypeError, ValueError):
@@ -779,10 +856,7 @@ def render_scope_jpeg(video_path, time_sec, filters):
     bit_depth = source_video_bit_depth(video_path)
     filter_complex, used = build_scope_filter_complex(filters, bit_depth=bit_depth)
 
-    try:
-        t = max(0.0, float(time_sec))
-    except (TypeError, ValueError):
-        t = 0.0
+    t = clamp_seek_time(video_path, time_sec)
 
     used_set = set(used)
     needs_native = bool(used_set & SCOPE_NATIVE_FRAME)
