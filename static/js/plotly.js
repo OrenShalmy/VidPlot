@@ -512,9 +512,20 @@ function setupPlotlyChart(jsonData) {
     }
 
     function togglePlayback() {
+        videoPlayer = media();
+        transport.video = videoPlayer;
         if (transport.shuttleRate !== 0 || transport.reverseRafId !== null || !videoPlayer.paused) {
             pausePlayback();
         } else {
+            const dur = Number(videoPlayer.duration);
+            if (videoPlayer.ended || (Number.isFinite(dur) && dur > 0 && videoPlayer.currentTime >= dur - 0.05)) {
+                try {
+                    if (typeof videoPlayer.fastSeek === "function") videoPlayer.fastSeek(0);
+                    else videoPlayer.currentTime = 0;
+                } catch (_) {
+                    videoPlayer.currentTime = 0;
+                }
+            }
             applyShuttle(1);
         }
     }

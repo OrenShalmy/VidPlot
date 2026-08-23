@@ -19,6 +19,129 @@ document.addEventListener("DOMContentLoaded", function () {
     let analysisGeneration = 0;
     let compareBGeneration = 0;
     let pendingOpenPath = "";
+    let rawParamsResolver = null;
+
+    window.vidplotInputByPath = window.vidplotInputByPath || {};
+
+    const RAW_PARAMS_KEY = "vidplotRawParams";
+    const RAW_PARAM_EXTS = new Set(["yuv", "raw"]);
+
+    function pathExtension(path) {
+        const base = String(path || "").split(/[?#]/)[0];
+        const name = base.split(/[/\\]/).pop() || "";
+        const dot = name.lastIndexOf(".");
+        return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+    }
+
+    function needsRawParams(path) {
+        return RAW_PARAM_EXTS.has(pathExtension(path));
+    }
+
+    function inputOptsForPath(path) {
+        if (!path) return null;
+        return window.vidplotInputByPath[path]
+            || window.vidplotJsonData?.format?.vidplot_input
+            || null;
+    }
+
+    function rememberInputOpts(path, opts) {
+        if (!path || !opts) return;
+        window.vidplotInputByPath[path] = opts;
+        try {
+            localStorage.setItem(RAW_PARAMS_KEY, JSON.stringify(opts));
+        } catch (_) { /* ignore */ }
+    }
+
+    function loadSavedRawParams() {
+        try {
+            const raw = localStorage.getItem(RAW_PARAMS_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+            return parsed;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function validateRawParamsForm() {
+        const pix = (document.getElementById("rawPixFmt")?.value || "").trim().toLowerCase();
+        const rate = (document.getElementById("rawFrameRate")?.value || "").trim();
+        const size = (document.getElementById("rawSize")?.value || "").trim().toLowerCase().replace(/\s+/g, "");
+        const errEl = document.getElementById("rawParamsError");
+        const fail = (msg) => {
+            if (errEl) {
+                errEl.hidden = false;
+                errEl.textContent = msg;
+            }
+            return null;
+        };
+        if (!pix) return fail("Enter a pixel format (e.g. yuv420p)");
+        if (!/^[a-z0-9_]+$/.test(pix)) return fail("Invalid pixel format name");
+        if (!rate || !Number.isFinite(Number(rate)) || Number(rate) <= 0) {
+            return fail("Enter a valid frame rate (e.g. 25)");
+        }
+        if (!/^\d+x\d+$/.test(size)) return fail("Size must look like 1920x1080");
+        if (errEl) {
+            errEl.hidden = true;
+            errEl.textContent = "";
+        }
+        const rateNum = Number(rate);
+        return {
+            format: "rawvideo",
+            pixel_format: pix,
+            size,
+            framerate: rateNum === Math.floor(rateNum) ? String(Math.floor(rateNum)) : String(rateNum),
+        };
+    }
+
+    function hideRawParamsDialog(result) {
+        const dialog = document.getElementById("rawParamsDialog");
+        if (dialog) dialog.hidden = true;
+        const resolve = rawParamsResolver;
+        rawParamsResolver = null;
+        if (resolve) resolve(result);
+    }
+
+    function promptRawParams(path) {
+        const dialog = document.getElementById("rawParamsDialog");
+        const form = document.getElementById("rawParamsForm");
+        if (!dialog || !form) return Promise.resolve(null);
+
+        const hint = document.getElementById("rawParamsFileHint");
+        if (hint) {
+            const name = String(path || "").split(/[/\\]/).pop() || "file";
+            hint.textContent = `${name} needs pixel format, size, and frame rate.`;
+        }
+
+        const saved = loadSavedRawParams() || {};
+        const pixEl = document.getElementById("rawPixFmt");
+        const rateEl = document.getElementById("rawFrameRate");
+        const sizeEl = document.getElementById("rawSize");
+        if (pixEl) pixEl.value = saved.pixel_format || "yuv420p";
+        if (rateEl) rateEl.value = saved.framerate || "25";
+        if (sizeEl) sizeEl.value = saved.size || "1920x1080";
+        const errEl = document.getElementById("rawParamsError");
+        if (errEl) {
+            errEl.hidden = true;
+            errEl.textContent = "";
+        }
+
+        dialog.hidden = false;
+        setTimeout(() => pixEl?.focus(), 0);
+
+        return new Promise((resolve) => {
+            rawParamsResolver = resolve;
+        });
+    }
+
+    async function ensureRawInput(path) {
+        if (!needsRawParams(path)) return undefined;
+        const opts = await promptRawParams(path);
+        if (!opts) return null;
+        rememberInputOpts(path, opts);
+        return opts;
+    }
 
     if (videoSection) videoSection.style.display = "none";
     if (bottomChrome) bottomChrome.style.display = "none";
@@ -339,7 +462,18 @@ document.addEventListener("DOMContentLoaded", function () {
             showLoadChoiceDialog();
             return;
         }
-        analyzeLocalPath(path);
+        openPathWithRawGate(path, "replace");
+    }
+
+    async function openPathWithRawGate(path, mode) {
+        if (!path) return;
+        const input = await ensureRawInput(path);
+        if (needsRawParams(path) && input == null) return;
+        if (mode === "compare") {
+            await startCompareWithPath(path, input || undefined);
+        } else {
+            await analyzeLocalPath(path, input || undefined);
+        }
     }
 
     const loadChoiceReplace = document.getElementById("loadChoiceReplace");
@@ -350,19 +484,35 @@ document.addEventListener("DOMContentLoaded", function () {
         loadChoiceReplace.addEventListener("click", () => {
             const path = pendingOpenPath;
             hideLoadChoiceDialog();
-            if (path) analyzeLocalPath(path);
+            if (path) openPathWithRawGate(path, "replace");
         });
     }
     if (loadChoiceCompare) {
         loadChoiceCompare.addEventListener("click", () => {
             const path = pendingOpenPath;
             hideLoadChoiceDialog();
-            if (path) startCompareWithPath(path);
+            if (path) openPathWithRawGate(path, "compare");
         });
     }
     if (loadChoiceDialog) {
         loadChoiceDialog.querySelectorAll("[data-load-choice-dismiss]").forEach((btn) => {
             btn.addEventListener("click", () => hideLoadChoiceDialog());
+        });
+    }
+
+    const rawParamsForm = document.getElementById("rawParamsForm");
+    const rawParamsDialog = document.getElementById("rawParamsDialog");
+    if (rawParamsForm) {
+        rawParamsForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const opts = validateRawParamsForm();
+            if (!opts) return;
+            hideRawParamsDialog(opts);
+        });
+    }
+    if (rawParamsDialog) {
+        rawParamsDialog.querySelectorAll("[data-raw-params-dismiss]").forEach((btn) => {
+            btn.addEventListener("click", () => hideRawParamsDialog(null));
         });
     }
 
@@ -384,8 +534,13 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    async function startCompareWithPath(pathB) {
+    async function startCompareWithPath(pathB, inputOpts) {
         if (!pathB) return;
+        if (inputOpts === undefined && needsRawParams(pathB)) {
+            const gated = await ensureRawInput(pathB);
+            if (gated == null) return;
+            inputOpts = gated;
+        }
         if (typeof window.vidplotSnapshotSinglePreview === "function") {
             window.vidplotSnapshotSinglePreview();
         }
@@ -406,10 +561,12 @@ document.addEventListener("DOMContentLoaded", function () {
         setLoadDropStatus("Opening compare…", "Please wait", { busy: true });
         startAnalyzePulse();
         try {
+            const body = { path: pathB };
+            if (inputOpts) body.input = inputOpts;
             const res = await fetch("/api/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path: pathB }),
+                body: JSON.stringify(body),
             });
             const result = await res.json();
             if (!res.ok) {
@@ -421,6 +578,12 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!jsonData) {
                 const jsonRes = await fetch(result.json_url);
                 jsonData = await jsonRes.json();
+            }
+            if (inputOpts) {
+                rememberInputOpts(pathB, inputOpts);
+                if (jsonData?.format) jsonData.format.vidplot_input = inputOpts;
+            } else if (jsonData?.format?.vidplot_input) {
+                rememberInputOpts(pathB, jsonData.format.vidplot_input);
             }
             presentCompareSlot("B", result, jsonData, generation, syncTime);
         } catch (err) {
@@ -483,7 +646,10 @@ document.addEventListener("DOMContentLoaded", function () {
         fetch("/api/analyze-qp", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path }),
+            body: JSON.stringify({
+                path,
+                ...(inputOptsForPath(path) ? { input: inputOptsForPath(path) } : {}),
+            }),
         })
             .then(async (res) => {
                 const data = await res.json();
@@ -523,7 +689,10 @@ document.addEventListener("DOMContentLoaded", function () {
         return fetch("/api/analyze-frames", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path }),
+            body: JSON.stringify({
+                path,
+                ...(inputOptsForPath(path) ? { input: inputOptsForPath(path) } : {}),
+            }),
         })
             .then(async (res) => {
                 const data = await res.json();
@@ -708,8 +877,13 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    async function analyzeLocalPath(path) {
+    async function analyzeLocalPath(path, inputOpts) {
         if (!path) return;
+        if (inputOpts === undefined && needsRawParams(path)) {
+            const gated = await ensureRawInput(path);
+            if (gated == null) return;
+            inputOpts = gated;
+        }
         if (typeof window.vidplotExitCompareMode === "function" && window.vidplotIsCompareMode?.()) {
             window.vidplotExitCompareMode();
         }
@@ -732,10 +906,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (urlBtn) urlBtn.disabled = true;
         startAnalyzePulse();
         try {
+            const body = { path };
+            if (inputOpts) body.input = inputOpts;
             const res = await fetch("/api/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path }),
+                body: JSON.stringify(body),
             });
             const result = await res.json();
             if (!res.ok) {
@@ -748,6 +924,12 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!jsonData) {
                 const jsonRes = await fetch(result.json_url);
                 jsonData = await jsonRes.json();
+            }
+            if (inputOpts) {
+                rememberInputOpts(path, inputOpts);
+                if (jsonData?.format) jsonData.format.vidplot_input = inputOpts;
+            } else if (jsonData?.format?.vidplot_input) {
+                rememberInputOpts(path, jsonData.format.vidplot_input);
             }
             setProgress("Ready", 100);
             presentShell(result, jsonData, generation);

@@ -55,7 +55,10 @@
           "webm",
           "h264",
           "h265",
-          "hevc"
+          "hevc",
+          "yuv",
+          "raw",
+          "y4m"
         ],
         "name": "Video",
         "description": "Video file",
@@ -105,7 +108,9 @@
         "video/x-msvideo",
         "video/mp2t",
         "video/webm",
-        "video/x-m4v"
+        "video/x-m4v",
+        "video/x-raw",
+        "video/yuv"
       ],
       "artifactName": "VidPlot-Linux-${arch}.${ext}"
     },

@@ -52,7 +52,7 @@
     </div>
   </form>
   <div id="dropError" class="drop-error" hidden></div>
-  <input type="file" id="videoUpload" name="video" accept="video/*" hidden>
+  <input type="file" id="videoUpload" name="video" accept="video/*,.yuv,.raw,.y4m" hidden>
 </div>
 
 <div id="loadChoiceDialog" class="load-choice-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="loadChoiceTitle">
@@ -65,6 +65,65 @@
       <button type="button" id="loadChoiceCompare" class="load-choice-btn">Compare with existing</button>
       <button type="button" class="load-choice-btn load-choice-btn-ghost" data-load-choice-dismiss>Cancel</button>
     </div>
+  </div>
+</div>
+
+<div id="rawParamsDialog" class="load-choice-dialog" hidden role="dialog" aria-modal="true" aria-labelledby="rawParamsTitle">
+  <div class="load-choice-backdrop" data-raw-params-dismiss></div>
+  <div class="load-choice-panel raw-params-panel">
+    <h2 id="rawParamsTitle" class="load-choice-title">Raw video parameters</h2>
+    <p class="load-choice-text" id="rawParamsFileHint">Headerless YUV/RAW needs format, size, and frame rate.</p>
+    <form id="rawParamsForm" class="raw-params-form" autocomplete="off">
+      <label class="raw-params-field">
+        <span>Pixel format</span>
+        <input type="text" id="rawPixFmt" name="pixel_format" list="rawPixFmtList" required spellcheck="false" placeholder="yuv420p">
+      </label>
+      <datalist id="rawPixFmtList">
+        <option value="yuv420p"></option>
+        <option value="yuv422p"></option>
+        <option value="yuv444p"></option>
+        <option value="nv12"></option>
+        <option value="nv21"></option>
+        <option value="yuyv422"></option>
+        <option value="uyvy422"></option>
+        <option value="yuv420p10le"></option>
+        <option value="yuv422p10le"></option>
+        <option value="yuv444p10le"></option>
+        <option value="gray"></option>
+        <option value="gray16le"></option>
+      </datalist>
+      <label class="raw-params-field">
+        <span>Frame rate</span>
+        <input type="text" id="rawFrameRate" name="framerate" list="rawFrameRateList" required spellcheck="false" placeholder="25">
+      </label>
+      <datalist id="rawFrameRateList">
+        <option value="23.976"></option>
+        <option value="24"></option>
+        <option value="25"></option>
+        <option value="29.97"></option>
+        <option value="30"></option>
+        <option value="50"></option>
+        <option value="59.94"></option>
+        <option value="60"></option>
+      </datalist>
+      <label class="raw-params-field">
+        <span>Width × Height</span>
+        <input type="text" id="rawSize" name="size" list="rawSizeList" required spellcheck="false" placeholder="1920x1080">
+      </label>
+      <datalist id="rawSizeList">
+        <option value="640x480"></option>
+        <option value="1280x720"></option>
+        <option value="1920x1080"></option>
+        <option value="2048x1080"></option>
+        <option value="3840x2160"></option>
+        <option value="4096x2160"></option>
+      </datalist>
+      <p class="raw-params-error" id="rawParamsError" hidden></p>
+      <div class="load-choice-actions">
+        <button type="submit" class="load-choice-btn load-choice-btn-primary">Open</button>
+        <button type="button" class="load-choice-btn load-choice-btn-ghost" data-raw-params-dismiss>Cancel</button>
+      </div>
+    </form>
   </div>
 </div>
 

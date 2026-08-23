@@ -289,6 +289,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     async function fetchScopeBlob(path, jsonData, time, filters, signal) {
+        const input = (window.vidplotInputByPath && window.vidplotInputByPath[path])
+            || jsonData?.format?.vidplot_input
+            || null;
         const res = await fetch("/api/scopes", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -296,6 +299,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 path,
                 time: clampScopeTime(time, jsonData),
                 filters,
+                ...(input ? { input } : {}),
             }),
             signal,
         });

@@ -79,8 +79,6 @@
         let pendingTime = null;
         let seekDebounce = null;
         let destroyed = false;
-        const rate = (Number.isFinite(fps) && fps > 0) ? fps : 25;
-        const frameDt = 1 / rate;
         const maxT = (Number.isFinite(duration) && duration > 0) ? duration : Infinity;
 
         function showCanvas() {
@@ -138,10 +136,18 @@
                 320,
                 Math.min(1920, Math.round((canvas?.clientWidth || 960) * (window.devicePixelRatio || 1)))
             );
+            const input = (window.vidplotInputByPath && window.vidplotInputByPath[path])
+                || window.vidplotJsonData?.format?.vidplot_input
+                || null;
             return fetch("/api/preview-frame", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ path, time, width }),
+                body: JSON.stringify({
+                    path,
+                    time,
+                    width,
+                    ...(input ? { input } : {}),
+                }),
                 signal: abortController.signal,
             })
                 .then(async (res) => {
@@ -205,10 +211,12 @@
                 return;
             }
             if (!lastPlayTs) lastPlayTs = ts;
-            const elapsed = (ts - lastPlayTs) / 1000;
-            const step = Math.max(frameDt, elapsed) * Math.max(0.25, Math.abs(playbackRate) || 1);
+            // Advance by wall-clock time only (not frameDt). Using max(frameDt, elapsed)
+            // made 25fps content run ~2.4× realtime because rAF fires ~60Hz.
+            const elapsed = Math.max(0, (ts - lastPlayTs) / 1000);
             lastPlayTs = ts;
-            let next = currentTime + (playbackRate >= 0 ? step : -step);
+            const dt = Math.min(elapsed, 0.25) * Math.max(0.25, Math.abs(playbackRate) || 1);
+            let next = currentTime + (playbackRate >= 0 ? dt : -dt);
             if (next >= maxT) {
                 currentTime = maxT === Infinity ? currentTime : maxT;
                 paused = true;
@@ -282,6 +290,10 @@
             play() {
                 if (destroyed) return Promise.resolve();
                 if (!paused) return Promise.resolve();
+                // Replay from start when already at the last frame
+                if (Number.isFinite(maxT) && maxT > 0 && currentTime >= maxT - 1e-3) {
+                    currentTime = 0;
+                }
                 paused = false;
                 events.dispatch("play");
                 lastPlayTs = 0;

@@ -9,7 +9,7 @@ from urllib.parse import urlparse, unquote
 from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect, Response
 from werkzeug.utils import secure_filename
 
-ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265', 'ts', 'm4v', 'mkv', 'avi'}
+ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265', 'ts', 'm4v', 'mkv', 'avi', 'yuv', 'raw', 'y4m'}
 DEFAULT_CONFIG = {
     'ffprobe_path': '',
     'ffmpeg_path': '',
@@ -292,14 +292,185 @@ def validate_video_path(path):
     return resolved
 
 
-def ffprobe_input_args(source):
-    """Extra ffprobe flags for network inputs."""
+def ffprobe_input_args(source, input_opts=None):
+    """Extra ffprobe/ffmpeg flags before -i (network + optional rawvideo)."""
+    args = []
     if is_http_url(source):
-        return [
+        args.extend([
             '-rw_timeout', '30000000',  # 30s I/O timeout (microseconds)
             '-protocol_whitelist', 'file,http,https,tcp,tls,crypto',
-        ]
-    return []
+        ])
+    opts = normalize_input_opts(input_opts)
+    if opts:
+        # rawvideo demuxer private options (ffprobe rejects -pix_fmt/-s/-r here)
+        args.extend([
+            '-f', 'rawvideo',
+            '-pixel_format', opts['pixel_format'],
+            '-video_size', opts['size'],
+            '-framerate', str(opts['framerate']),
+        ])
+    return args
+
+
+def ffmpeg_input_args(source, input_opts=None):
+    """Extra ffmpeg flags for network / raw inputs (same as ffprobe)."""
+    return ffprobe_input_args(source, input_opts)
+
+
+def normalize_input_opts(raw):
+    """Validate client raw-video decode options; return dict or None."""
+    if not raw or not isinstance(raw, dict):
+        return None
+    pix = str(raw.get('pixel_format') or raw.get('pix_fmt') or '').strip().lower()
+    size = str(raw.get('size') or '').strip().lower().replace(' ', '')
+    rate_raw = raw.get('framerate', raw.get('r', raw.get('fps')))
+    if not pix or not size or rate_raw is None or rate_raw == '':
+        return None
+    if not re.fullmatch(r'\d+x\d+', size):
+        raise ValueError('Size must look like WIDTHxHEIGHT (e.g. 1920x1080)')
+    w_s, h_s = size.split('x', 1)
+    width, height = int(w_s), int(h_s)
+    if width < 2 or height < 2 or width > 16384 or height > 16384:
+        raise ValueError('Width and height must be between 2 and 16384')
+    if not re.fullmatch(r'[a-z0-9_]+', pix):
+        raise ValueError('Invalid pixel format name')
+    try:
+        rate = float(rate_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('Frame rate must be a number') from exc
+    if not (0.1 <= rate <= 480):
+        raise ValueError('Frame rate must be between 0.1 and 480')
+    # Prefer compact string for integer rates
+    rate_str = str(int(rate)) if rate == int(rate) else str(rate)
+    return {
+        'format': 'rawvideo',
+        'pixel_format': pix,
+        'size': f'{width}x{height}',
+        'framerate': rate_str,
+    }
+
+
+def load_vidplot_input(video_path):
+    """Load persisted raw input options from the analysis JSON for a path."""
+    try:
+        _, json_path = analysis_json_paths(video_path)
+    except Exception:
+        return None
+    if not os.path.isfile(json_path):
+        return None
+    try:
+        with open(json_path, 'r', encoding='utf-8') as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    fmt = data.get('format') or {}
+    try:
+        return normalize_input_opts(fmt.get('vidplot_input'))
+    except ValueError:
+        return None
+
+
+def resolve_input_opts(video_path, input_opts=None):
+    """Prefer explicit request opts; else fall back to saved analysis JSON."""
+    if input_opts is not None:
+        return normalize_input_opts(input_opts)
+    return load_vidplot_input(video_path)
+
+
+# Approximate bytes per pixel (luma+chroma) for common planar / packed formats
+_RAW_BYTES_PER_PIXEL = {
+    'yuv420p': 1.5,
+    'yuvj420p': 1.5,
+    'nv12': 1.5,
+    'nv21': 1.5,
+    'yuv422p': 2.0,
+    'yuvj422p': 2.0,
+    'yuyv422': 2.0,
+    'uyvy422': 2.0,
+    'yuv444p': 3.0,
+    'yuvj444p': 3.0,
+    'gray': 1.0,
+    'gray16le': 2.0,
+    'gray16be': 2.0,
+    'yuv420p10le': 3.0,
+    'yuv420p10be': 3.0,
+    'yuv422p10le': 4.0,
+    'yuv422p10be': 4.0,
+    'yuv444p10le': 6.0,
+    'yuv444p10be': 6.0,
+    'yuv420p12le': 3.0,
+    'yuv422p12le': 4.0,
+    'yuv444p12le': 6.0,
+    'yuv420p16le': 3.0,
+    'yuv422p16le': 4.0,
+    'yuv444p16le': 6.0,
+}
+
+
+def raw_frame_byte_size(pixel_format, size):
+    """Bytes per frame for a rawvideo layout, or None if unknown."""
+    pix = (pixel_format or '').lower()
+    bpp = _RAW_BYTES_PER_PIXEL.get(pix)
+    if bpp is None:
+        return None
+    try:
+        w_s, h_s = str(size).lower().split('x', 1)
+        width, height = int(w_s), int(h_s)
+    except (TypeError, ValueError):
+        return None
+    return int(width * height * bpp)
+
+
+def synthesize_raw_duration(video_path, input_opts, json_data):
+    """Fill duration / nb_frames when ffprobe cannot infer them for rawvideo."""
+    if is_http_url(video_path):
+        return
+    opts = normalize_input_opts(input_opts)
+    if not opts:
+        return
+    fmt = json_data.setdefault('format', {})
+    try:
+        existing = float(fmt.get('duration') or 0)
+    except (TypeError, ValueError):
+        existing = 0.0
+    if existing > 0:
+        return
+    frame_bytes = raw_frame_byte_size(opts['pixel_format'], opts['size'])
+    if not frame_bytes:
+        return
+    try:
+        file_size = int(fmt.get('file_size') or os.path.getsize(video_path))
+    except (TypeError, ValueError, OSError):
+        return
+    if file_size <= 0:
+        return
+    n_frames = file_size // frame_bytes
+    if n_frames < 1:
+        return
+    try:
+        fps = float(opts['framerate'])
+    except (TypeError, ValueError):
+        return
+    if fps <= 0:
+        return
+    duration = n_frames / fps
+    fmt['duration'] = f'{duration:.6f}'
+    fmt['nb_frames'] = str(n_frames)
+    for stream in json_data.get('streams') or []:
+        if stream.get('codec_type') != 'video':
+            continue
+        stream.setdefault('duration', fmt['duration'])
+        stream.setdefault('nb_frames', str(n_frames))
+        stream.setdefault('avg_frame_rate', f'{opts["framerate"]}/1')
+        stream.setdefault('r_frame_rate', f'{opts["framerate"]}/1')
+        stream.setdefault('pix_fmt', opts['pixel_format'])
+        try:
+            w_s, h_s = opts['size'].split('x', 1)
+            stream.setdefault('width', int(w_s))
+            stream.setdefault('height', int(h_s))
+        except ValueError:
+            pass
+        break
 
 
 def friendly_ffprobe_error(stderr, filename=''):
@@ -317,12 +488,15 @@ def friendly_ffprobe_error(stderr, filename=''):
         return f'{name} could not be read as a valid video. It may be truncated or corrupted.'
     if 'permission denied' in lower:
         return f'Permission denied reading {name}.'
-    if 'no such file' in lower:
+    if 'no such file' in lower or 'no such file or directory' in lower:
         return f'File not found: {name}'
-    if '404' in lower or 'not found' in lower:
+    # HTTP-only patterns — do not match generic "Option … not found"
+    if re.search(r'\b404\b', lower) or '404 not found' in lower or 'http error 404' in lower:
         return f'URL not found (404): {name}'
-    if '403' in lower or 'forbidden' in lower:
+    if re.search(r'\b403\b', lower) or '403 forbidden' in lower or 'http error 403' in lower:
         return f'Access denied fetching URL: {name}'
+    if 'option not found' in lower or 'unrecognized option' in lower:
+        return f'Unsupported decode option while reading {name}.'
     if 'connection refused' in lower:
         return f'Connection refused for {name}.'
     if 'timed out' in lower or 'timeout' in lower or 'error number -138' in lower:
@@ -364,17 +538,18 @@ def parse_qp_cells(blob):
     return values
 
 
-def extract_mean_qp_per_frame(ffmpeg_bin, video_path):
+def extract_mean_qp_per_frame(ffmpeg_bin, video_path, input_opts=None):
     """Decode with ffmpeg QP debug and return mean QP per output frame.
 
     H.264 (and codecs that print the same `New frame` / QP grid logs) work.
     HEVC and others often omit QP maps — returns [] and analysis continues.
     """
+    opts = resolve_input_opts(video_path, input_opts)
     cmd = [
         ffmpeg_bin,
         '-hide_banner',
         '-nostats',
-        *ffprobe_input_args(video_path),
+        *ffprobe_input_args(video_path, opts),
         '-debug:v', 'qp',
         '-i', video_path,
         '-an',
@@ -467,7 +642,7 @@ def ffmpeg_is_available(config=None):
         return False
 
 
-def analyze_video_file(video_path):
+def analyze_video_file(video_path, input_opts=None):
     """Fast open: container + streams only. Frames/QP are follow-up API calls."""
     global current_source_path
 
@@ -475,6 +650,7 @@ def analyze_video_file(video_path):
     filename = source_display_name(video_path)
     remote = is_http_url(video_path)
     json_filename, output_json_path = analysis_json_paths(video_path)
+    opts = normalize_input_opts(input_opts)
 
     config = load_config()
     ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
@@ -484,7 +660,7 @@ def analyze_video_file(video_path):
         ffprobe_bin,
         '-hide_banner',
         '-loglevel', 'error',
-        *ffprobe_input_args(video_path),
+        *ffprobe_input_args(video_path, opts),
         '-print_format', 'json',
         '-show_format',
         '-show_streams',
@@ -523,6 +699,10 @@ def analyze_video_file(video_path):
     json_data['format']['filename'] = filename
     json_data['format']['source_path'] = video_path
     json_data['format']['is_remote'] = remote
+    if opts:
+        json_data['format']['vidplot_input'] = opts
+
+    synthesize_raw_duration(video_path, opts, json_data)
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
@@ -532,7 +712,11 @@ def analyze_video_file(video_path):
     duration = float(json_data.get('format', {}).get('duration', 0) or 0)
     # Unique ?v= per file so Chromium does not reuse a cached /media/source clip.
     video_url = video_path if remote else local_video_playback_url(video_path)
-    preview_hint = preview_hint_for_codec(primary_video_codec(json_data))
+    codec = primary_video_codec(json_data)
+    format_name = (json_data.get('format') or {}).get('format_name') or ''
+    preview_hint = preview_hint_for_codec(codec)
+    if opts or 'rawvideo' in format_name or 'yuv4mpeg' in format_name:
+        preview_hint = 'ffmpeg'
 
     return {
         'message': 'File opened successfully',
@@ -550,10 +734,11 @@ def analyze_video_file(video_path):
     }
 
 
-def analyze_frames_for_path(video_path):
+def analyze_frames_for_path(video_path, input_opts=None):
     """Per-frame size/type probe; merges into the saved analysis JSON."""
     video_path = validate_video_path(video_path)
     filename = source_display_name(video_path)
+    opts = resolve_input_opts(video_path, input_opts)
     config = load_config()
     ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
     ffmpeg_available = ffmpeg_is_available(config)
@@ -562,7 +747,7 @@ def analyze_frames_for_path(video_path):
         ffprobe_bin,
         '-hide_banner',
         '-loglevel', 'error',
-        *ffprobe_input_args(video_path),
+        *ffprobe_input_args(video_path, opts),
         '-select_streams', 'v:0',
         '-print_format', 'json',
         '-show_entries', 'frame=pict_type,best_effort_timestamp_time,pkt_pts_time,pkt_dts_time,pkt_size',
@@ -595,6 +780,8 @@ def analyze_frames_for_path(video_path):
         json_data['format'] = {}
     json_data['format'].setdefault('filename', filename)
     json_data['format']['source_path'] = video_path
+    if opts:
+        json_data['format']['vidplot_input'] = opts
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
@@ -606,14 +793,6 @@ def analyze_frames_for_path(video_path):
         'frames_pending': False,
         'qp_pending': ffmpeg_available,
     }
-
-
-def ffmpeg_input_args(source):
-    """Extra ffmpeg flags for network inputs (same idea as ffprobe)."""
-    return ffprobe_input_args(source)
-
-
-# QCTools playback-filter defaults (see bavc/qctools filter graph dump)
 # plus FFmpeg codecview for motion vectors / QP map:
 # https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
 SCOPE_ORDER = (
@@ -838,9 +1017,10 @@ def clamp_seek_time(video_path, time_sec):
     return t
 
 
-def render_preview_jpeg(video_path, time_sec, max_width=1920):
+def render_preview_jpeg(video_path, time_sec, max_width=1920, input_opts=None):
     """Seek to time_sec and render one JPEG frame for canvas preview."""
     video_path = validate_video_path(video_path)
+    opts = resolve_input_opts(video_path, input_opts)
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
     t = clamp_seek_time(video_path, time_sec)
@@ -853,7 +1033,7 @@ def render_preview_jpeg(video_path, time_sec, max_width=1920):
         '-hide_banner',
         '-loglevel', 'error',
         '-ss', f'{t:.3f}',
-        *ffmpeg_input_args(video_path),
+        *ffmpeg_input_args(video_path, opts),
         '-i', video_path,
         '-an',
         '-vf', f'scale=min({width}\\,iw):-2',
@@ -870,9 +1050,10 @@ def render_preview_jpeg(video_path, time_sec, max_width=1920):
     return proc.stdout
 
 
-def render_scope_jpeg(video_path, time_sec, filters):
+def render_scope_jpeg(video_path, time_sec, filters, input_opts=None):
     """Seek to time_sec and render selected FFmpeg scope filters as one JPEG."""
     video_path = validate_video_path(video_path)
+    opts = resolve_input_opts(video_path, input_opts)
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
     bit_depth = source_video_bit_depth(video_path)
@@ -897,14 +1078,14 @@ def render_scope_jpeg(video_path, time_sec, filters):
     # Seek after open when side-data filters are active so the decoder can export them
     if needs_native:
         cmd.extend([
-            *ffmpeg_input_args(video_path),
+            *ffmpeg_input_args(video_path, opts),
             '-i', video_path,
             '-ss', f'{t:.3f}',
         ])
     else:
         cmd.extend([
             '-ss', f'{t:.3f}',
-            *ffmpeg_input_args(video_path),
+            *ffmpeg_input_args(video_path, opts),
             '-i', video_path,
         ])
     cmd.extend([
@@ -924,13 +1105,14 @@ def render_scope_jpeg(video_path, time_sec, filters):
     return proc.stdout, used
 
 
-def analyze_qp_for_path(video_path):
+def analyze_qp_for_path(video_path, input_opts=None):
     """Run ffmpeg QP pass and merge mean_qp into the saved analysis JSON."""
     video_path = validate_video_path(video_path)
+    opts = resolve_input_opts(video_path, input_opts)
 
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
-    mean_qps = extract_mean_qp_per_frame(ffmpeg_bin, video_path)
+    mean_qps = extract_mean_qp_per_frame(ffmpeg_bin, video_path, opts)
     qp_available = bool(mean_qps) and any(v is not None for v in mean_qps)
 
     _, output_json_path = analysis_json_paths(video_path)
@@ -1051,7 +1233,7 @@ def analyze_local_path():
     data = request.get_json(silent=True) or {}
     path = data.get('path') or data.get('url')
     try:
-        result = analyze_video_file(path)
+        result = analyze_video_file(path, data.get('input'))
         return jsonify(result)
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 400
@@ -1070,7 +1252,7 @@ def analyze_frames_route():
     data = request.get_json(silent=True) or {}
     path = data.get('path') or current_source_path
     try:
-        result = analyze_frames_for_path(path)
+        result = analyze_frames_for_path(path, data.get('input'))
         return jsonify(result)
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 400
@@ -1087,7 +1269,7 @@ def analyze_qp_route():
     data = request.get_json(silent=True) or {}
     path = data.get('path') or current_source_path
     try:
-        result = analyze_qp_for_path(path)
+        result = analyze_qp_for_path(path, data.get('input'))
         return jsonify(result)
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 400
@@ -1106,7 +1288,7 @@ def preview_frame_route():
     time_sec = data.get('time', 0)
     width = data.get('width', 1920)
     try:
-        jpeg = render_preview_jpeg(path, time_sec, max_width=width)
+        jpeg = render_preview_jpeg(path, time_sec, max_width=width, input_opts=data.get('input'))
         response = Response(jpeg, mimetype='image/jpeg')
         response.headers['Cache-Control'] = 'no-store'
         return response
@@ -1128,7 +1310,7 @@ def scopes_preview_route():
         filters = [filters]
     time_sec = data.get('time', 0)
     try:
-        jpeg, used = render_scope_jpeg(path, time_sec, filters)
+        jpeg, used = render_scope_jpeg(path, time_sec, filters, input_opts=data.get('input'))
         response = Response(jpeg, mimetype='image/jpeg')
         response.headers['X-VidPlot-Scopes'] = ','.join(used)
         response.headers['Cache-Control'] = 'no-store'

@@ -171,6 +171,15 @@ document.addEventListener("DOMContentLoaded", function () {
         const m = media();
         if (!m) return;
         if (m.paused || m.ended) {
+            const dur = Number(m.duration);
+            if (m.ended || (Number.isFinite(dur) && dur > 0 && m.currentTime >= dur - 0.05)) {
+                try {
+                    if (typeof m.fastSeek === "function") m.fastSeek(0);
+                    else m.currentTime = 0;
+                } catch (_) {
+                    m.currentTime = 0;
+                }
+            }
             m.play();
         } else {
             m.pause();
