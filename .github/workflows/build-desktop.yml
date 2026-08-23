@@ -25,7 +25,7 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            artifact: VidPlot-macOS-arm64
+            artifact: VidPlot-MacOS-arm64
             kind: mac
             builder_args: --mac --arm64
           - os: windows-latest
@@ -191,7 +191,7 @@ jobs:
           body: |
             ## Downloads
 
-            - **macOS:** `VidPlot-macOS-arm64.zip` (Open with works after first launch)
+            - **MacOS:** `VidPlot-MacOS-arm64.zip` (Open with works after first launch)
             - **Windows:** prefer `VidPlot-Windows-*-Setup.exe` for file associations; zip is portable
             - **Linux:** prefer `VidPlot-Linux-*.AppImage` for MIME / Open with; zip is portable.
               AppImage needs `zlib1g` (and usually `libfuse2` / `libfuse2t64`). Zip builds
@@ -199,23 +199,23 @@ jobs:
               Fallback: `APPIMAGE_EXTRACT_AND_RUN=1 ./VidPlot-Linux-*.AppImage` or
               `./vidplot --no-sandbox` from the unzipped folder.
 
-            ## macOS first launch
+            ## MacOS first launch
 
-            Release builds are not notarized. If macOS says **"VidPlot.app is damaged"**, the download is quarantined — not corrupt.
+            Release builds are not notarized. If MacOS says **"VidPlot.app is damaged"**, the download is quarantined — not corrupt.
 
             1. Control-click `VidPlot.app` → **Open** → **Open** again.
             2. If still blocked: **System Settings → Privacy & Security** → **Open Anyway**.
 
             Terminal fallback: `cp -R -X ~/Downloads/VidPlot.app /Applications/VidPlot.app`
 
-            FFmpeg must be installed separately (`brew install ffmpeg` on macOS;
+            FFmpeg must be installed separately (`brew install ffmpeg` on MacOS;
             `apt install ffmpeg` on Debian/Ubuntu).
 
             ## Open with VidPlot
 
             After install, use **Open with → VidPlot** (or set as default in OS settings) for common video types.
           files: |
-            artifacts/VidPlot-macOS-arm64.zip
+            artifacts/VidPlot-MacOS-arm64.zip
             artifacts/VidPlot-Windows-x64.zip
             artifacts/VidPlot-Windows-x64-Setup.exe
             artifacts/VidPlot-Windows-arm64.zip
