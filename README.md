@@ -41,6 +41,17 @@ Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; 
 
 Hard codecs (e.g. ProRes) use an ffmpeg→canvas preview path so scopes and scrubbing still work when the browser cannot decode the file natively.
 
+## Raw / uncompressed formats
+
+VidPlot can open headerless and lightly wrapped uncompressed video:
+
+| Extension | Behavior |
+| --------- | -------- |
+| **`.y4m`** | YUV4MPEG2 — size, frame rate, and pixel format come from the file header (no prompt) |
+| **`.yuv` / `.raw`** | Headerless rawvideo — a dialog asks for **pixel format**, **frame rate**, and **width × height** before open |
+
+Common presets are offered in the dialog (e.g. `yuv420p`, `1920x1080`, `25` / `59.94`); you can also type custom values. Last-used params are remembered. Preview always uses the ffmpeg→canvas path. Frame graph bars are typically constant size (raw frame bytes); QP / motion-vector scopes usually do not apply.
+
 ## Wipe compare
 
 Drop or pick a **second clip** while one is already open — choose **Compare with existing** — and scrub both in sync behind a draggable wipe.
@@ -70,6 +81,8 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 1. **Download** a build from [GitHub Releases](https://github.com/Oren-Beamr/VidPlot/releases) (MacOS arm64, Windows x64/arm64, Linux x64/arm64).
 2. Install [FFmpeg](https://ffmpeg.org/) so `ffprobe` and `ffmpeg` are on your `PATH` (or set paths in Options).
 3. Run the app, drop a video, and wait for properties → frame graph → QP (when supported).
+
+Supported containers and elementary streams include MP4, MOV, MKV, TS, AVI, WebM, H.264/H.265, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
 
 **Open with VidPlot:** after install, use **Open with → VidPlot** from Finder / Explorer / your file manager (or set VidPlot as the default app for a type in OS settings). On Windows use the **Setup** installer for associations; on Linux prefer the **AppImage**. MacOS zip of `.app` registers after the first launch.
 
