@@ -145,10 +145,10 @@ function isVidplotTypingTarget(el) {
 function releaseVidplotShortcutFocus() {
     const el = document.activeElement;
     if (!el || el === document.body || el === document.documentElement) return;
-    // Range / Plotly / config fields steal arrow and frame-step keys after OS focus returns
+    // Seek / Plotly / time-mode steal arrow and frame-step keys after OS focus returns.
+    // Never blur text fields here — that used to steal keystrokes (e.g. "l" in pixel format).
     if (
-        isVidplotTypingTarget(el)
-        || el.id === 'seekBar'
+        el.id === 'seekBar'
         || el.id === 'timeDisplayMode'
         || (el.closest && (el.closest('#frameChart') || el.closest('.js-plotly-plot')))
     ) {
@@ -878,8 +878,11 @@ function setupPlotlyChart(jsonData) {
             || lower === 'j' || lower === 'k' || lower === 'l'
             || key === '+' || key === '=' || key === '-';
         if (!isTransport) return;
-        releaseVidplotShortcutFocus();
+        // Must check before releaseVidplotShortcutFocus — blurring first made the
+        // typing-target guard always fail and J/K/L stole chars from form fields.
         if (isVidplotTypingTarget(document.activeElement)) return;
+        if (document.querySelector('.load-choice-dialog:not([hidden])')) return;
+        releaseVidplotShortcutFocus();
         // Space/K must not auto-repeat (would toggle/pause-spam); J/L and frame step may
         if (e.repeat && (key === ' ' || key === 'Spacebar' || code === 'Space' || lower === 'k')) return;
 
