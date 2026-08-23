@@ -1,31 +1,34 @@
-const CACHE_NAME = 'vidplot-v4';
+const CACHE_NAME = 'vidplot-v5';
 const ASSETS_TO_CACHE = [
-	'/',
-	'/static/css/style.css',
 	'/static/js/plotly.js',
 	'/static/js/player.js',
 	'/static/js/upload.js',
 	'/static/js/config.js',
 	'/static/js/mediainfo.js',
-	'https://cdn.plot.ly/plotly-latest.min.js'
 ];
 
 self.addEventListener('install', (event) => {
 	event.waitUntil(
 		caches.open(CACHE_NAME)
 			.then((cache) => cache.addAll(ASSETS_TO_CACHE))
+			.then(() => self.skipWaiting())
 	);
 });
 
 self.addEventListener('fetch', (event) => {
+	const req = event.request;
+	const url = new URL(req.url);
+	// Always network-first for HTML and versioned CSS/JS so UI updates show up
+	const isNavigate = req.mode === 'navigate' || url.pathname === '/';
+	const isUiAsset = /\.(?:css|js)$/.test(url.pathname);
+	if (isNavigate || isUiAsset) {
+		event.respondWith(
+			fetch(req).catch(() => caches.match(req))
+		);
+		return;
+	}
 	event.respondWith(
-		caches.match(event.request)
-			.then((response) => {
-				if (response) {
-					return response;
-				}
-				return fetch(event.request);
-			})
+		caches.match(req).then((response) => response || fetch(req))
 	);
 });
 
@@ -39,6 +42,6 @@ self.addEventListener('activate', (event) => {
 					}
 				})
 			);
-		})
+		}).then(() => self.clients.claim())
 	);
 });

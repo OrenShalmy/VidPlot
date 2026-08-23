@@ -406,16 +406,104 @@ body.is-loaded:not(.panel-graph-collapsed) #videoStage.has-scopes #scopePreview:
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px 18px;
+  justify-content: space-between;
+  gap: 10px 16px;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--border);
   background: var(--bg);
+}
+
+.scope-analyzers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .scope-switch {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.scope-overlays-control {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.scope-overlays-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px 0 9px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s, opacity 0.12s;
+}
+
+.scope-overlays-btn:hover {
+  background: rgba(112, 166, 255, 0.24);
+}
+
+.scope-overlays-btn:not(.is-active):not([aria-checked="true"]) {
+  border-color: var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+.scope-overlays-btn.is-active,
+.scope-overlays-btn[aria-checked="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.scope-overlays-check {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 1px;
+  opacity: 0.75;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.scope-overlays-btn.is-active .scope-overlays-check,
+.scope-overlays-btn[aria-checked="true"] .scope-overlays-check {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.scope-overlays-btn.is-active .scope-overlays-check::after,
+.scope-overlays-btn[aria-checked="true"] .scope-overlays-check::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 3px;
+  height: 7px;
+  border: solid #0b0d12;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.scope-overlays-label {
+  user-select: none;
 }
 
 .scope-switch-name {

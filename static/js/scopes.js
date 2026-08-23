@@ -4,8 +4,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const preview = document.getElementById("scopePreview");
     const legendEl = document.getElementById("scopeLegend");
     const statusEl = document.getElementById("scopeStatus");
+    const overlaysToggle = document.getElementById("scopeOverlaysToggle");
     const toggles = Array.from(document.querySelectorAll(".scope-toggle[data-scope]"));
     if (!videoEl || !stage || !preview || !toggles.length) return;
+
+    const OVERLAYS_KEY = "vidplotScopeOverlays";
+    let overlaysVisible = localStorage.getItem(OVERLAYS_KEY) !== "0";
 
     const SCOPE_LEGENDS = {
         oscilloscope: {
@@ -181,8 +185,16 @@ document.addEventListener("DOMContentLoaded", function () {
                 && videoEl.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
             );
         }
-        const showPip = pictureReady && names.some((name) => SCOPE_PIP.has(name));
+        const showPip = overlaysVisible
+            && pictureReady
+            && names.some((name) => SCOPE_PIP.has(name));
         stage.classList.toggle("has-scope-pip", showPip);
+    }
+
+    function syncOverlaysToggleUi() {
+        if (!overlaysToggle) return;
+        overlaysToggle.setAttribute("aria-checked", overlaysVisible ? "true" : "false");
+        overlaysToggle.classList.toggle("is-active", overlaysVisible);
     }
 
     function updateLegend(filters) {
@@ -213,7 +225,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 + `</div>`
             );
         }).join("");
-        legend.hidden = false;
+        legend.hidden = !overlaysVisible;
     }
 
     function sourcePath() {
@@ -435,6 +447,18 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    if (overlaysToggle) {
+        overlaysToggle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            overlaysVisible = !overlaysVisible;
+            try {
+                localStorage.setItem(OVERLAYS_KEY, overlaysVisible ? "1" : "0");
+            } catch (_) { /* ignore */ }
+            syncOverlaysToggleUi();
+            updateLegend(selectedFilters());
+        });
+    }
+
     document.querySelectorAll(".scope-switch-name").forEach((label) => {
         label.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -445,6 +469,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Default bind to native video; rebind when adapter activates
     bindMediaListeners();
+    syncOverlaysToggleUi();
 
     window.vidplotResetScopes = function () {
         active.clear();
