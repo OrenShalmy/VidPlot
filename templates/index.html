@@ -148,6 +148,13 @@
           <div class="compare-toolbar" role="toolbar" aria-label="Compare controls">
             <button type="button" id="compareOrientVertical" class="compare-tool-btn is-active" title="Vertical wipe (left / right)">Vertical</button>
             <button type="button" id="compareOrientHorizontal" class="compare-tool-btn" title="Horizontal wipe (top / bottom)">Horizontal</button>
+            <div class="compare-offset" id="compareOffsetGroup">
+              <span class="compare-offset-tag">B offset</span>
+              <button type="button" id="compareOffsetMinus" class="compare-tool-btn compare-offset-step" title="Nudge B one frame earlier (Alt+Left)">&minus;1</button>
+              <input type="number" step="1" value="0" id="compareOffsetInput" class="compare-offset-input" aria-label="B frame offset" inputmode="numeric">
+              <button type="button" id="compareOffsetPlus" class="compare-tool-btn compare-offset-step" title="Nudge B one frame later (Alt+Right)">+1</button>
+              <span id="compareOffsetReadout" class="compare-offset-readout">B +0 frames (+0.0 ms)</span>
+            </div>
             <button type="button" id="compareEndBtn" class="compare-tool-btn compare-tool-end" title="End comparison">End compare</button>
           </div>
           <div id="compareViewport" class="compare-viewport">
