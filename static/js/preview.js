@@ -384,7 +384,7 @@
 
     // ---- Compare frame lock -------------------------------------------------
     // A is index-truth. A ref index always means "A's frame N"; B is resolved as
-    // N + offsetFrames against B's OWN frame table.
+    // N + offsetFrames against B's OWN timestamp table.
     //
     // The two preview paths round a seek in OPPOSITE directions, and sit on
     // different time bases. Both were measured, not assumed:
@@ -406,9 +406,24 @@
             && window.vidplotGetCompareSlot(slot)?.jsonData) || null;
     }
 
-    function slotFrames(slot) {
-        const frames = slotJson(slot)?.frames;
-        return Array.isArray(frames) && frames.length ? frames : null;
+    // Presentation timestamps for a slot, as plain numbers.
+    //
+    // Prefers the full decoded frame table when it has landed, but falls back to
+    // the cheap packet-PTS probe (/api/frame-times, cached on the slot). The
+    // full table costs a whole-file decode -- 86 s to 185 s on a 7-minute 1080p
+    // broadcast file -- and the lock needs nothing from it but these numbers.
+    function slotPts(slot) {
+        const json = slotJson(slot);
+        const frames = json?.frames;
+        if (Array.isArray(frames) && frames.length && !json.frames_pending) {
+            const out = new Array(frames.length);
+            for (let i = 0; i < frames.length; i += 1) {
+                out[i] = parseFloat(frames[i].best_effort_timestamp_time);
+            }
+            return out;
+        }
+        const fast = window.vidplotGetCompareSlot?.(slot)?.frameTimes;
+        return Array.isArray(fast) && fast.length ? fast : null;
     }
 
     // Container start offset for a slot, in seconds. Only the ffmpeg path needs
@@ -422,24 +437,20 @@
         return Number.isFinite(v) ? v : 0;
     }
 
-    function framePts(frames, i) {
-        return parseFloat(frames[i]?.best_effort_timestamp_time);
-    }
-
-    // Local interval around frame i, from this slot's own table. Deliberately
-    // NOT the global frameDuration (frames[1]-frames[0]), which is CFR-only and
-    // wrong if the stream opens with reordering or an edit list.
-    function frameInterval(frames, i) {
-        const here = framePts(frames, i);
-        const next = i + 1 < frames.length ? framePts(frames, i + 1) : NaN;
+    // Local interval around frame i, from this slot's own timestamps.
+    // Deliberately NOT a global frameDuration (pts[1]-pts[0]), which is CFR-only
+    // and wrong if the stream opens with reordering or an edit list.
+    function frameInterval(pts, i) {
+        const here = pts[i];
+        const next = i + 1 < pts.length ? pts[i + 1] : NaN;
         if (Number.isFinite(here) && Number.isFinite(next) && next > here) return next - here;
-        const prev = i > 0 ? framePts(frames, i - 1) : NaN;
+        const prev = i > 0 ? pts[i - 1] : NaN;
         if (Number.isFinite(here) && Number.isFinite(prev) && here > prev) return here - prev;
         return 1 / 30;
     }
 
-    function clampIdx(frames, i) {
-        return Math.max(0, Math.min(frames.length - 1, i));
+    function clampIdx(pts, i) {
+        return Math.max(0, Math.min(pts.length - 1, i));
     }
 
     function isFfmpegSlot(api) {
@@ -447,19 +458,19 @@
     }
 
     // Resolve a ref index into the seek time for one slot.
-    function resolveSlotTime(slot, api, frames, idx) {
-        const i = clampIdx(frames, idx);
-        const pts = framePts(frames, i);
-        if (!Number.isFinite(pts)) return null;
-        const iv = frameInterval(frames, i);
+    function resolveSlotTime(slot, api, pts, idx) {
+        const i = clampIdx(pts, idx);
+        const t = pts[i];
+        if (!Number.isFinite(t)) return null;
+        const iv = frameInterval(pts, i);
         if (isFfmpegSlot(api)) {
             // ceiling semantics: aim half a frame BELOW, rebased to the
             // container start. Survives app.py's `-ss {t:.3f}` quantisation
             // (verified 200/200 at 30p, 300/300 at 59.94p).
-            return Math.max(0, pts - slotStartTime(slot) - iv / 2);
+            return Math.max(0, t - slotStartTime(slot) - iv / 2);
         }
         // floor semantics: aim half a frame ABOVE, absolute timeline.
-        return pts + iv / 2;
+        return t + iv / 2;
     }
 
     function lockOffsetFrames() {
@@ -467,16 +478,11 @@
         return Number.isFinite(v) ? v : 0;
     }
 
-    // The lock needs a settled frame table on both sides. app.py sets
-    // frames_pending until the per-frame ffprobe lands.
     function frameLockState() {
-        const fa = slotFrames("A");
-        const fb = slotFrames("B");
-        if (!fa || !fb) return { ready: false, reason: "frame table not ready" };
-        if (slotJson("A")?.frames_pending || slotJson("B")?.frames_pending) {
-            return { ready: false, reason: "frame table not ready" };
-        }
-        return { ready: true, reason: "", framesA: fa, framesB: fb };
+        const ptsA = slotPts("A");
+        const ptsB = slotPts("B");
+        if (!ptsA || !ptsB) return { ready: false, reason: "frame times not ready" };
+        return { ready: true, reason: "", ptsA, ptsB };
     }
 
     function offsetSeconds() {
@@ -486,8 +492,7 @@
         if (!st.ready) return 0;
         const off = lockOffsetFrames();
         if (!off) return 0;
-        const iv = frameInterval(st.framesA, clampIdx(st.framesA, 0));
-        return off * iv;
+        return off * frameInterval(st.ptsA, 0);
     }
 
     window.vidplotCompareFrameLockState = frameLockState;
@@ -547,11 +552,11 @@
         function refIdxNow() {
             const st = frameLockState();
             if (!st.ready || !apiA) return null;
-            const frames = st.framesA;
+            const pts = st.ptsA;
             const t = Number(apiA.currentTime);
             if (!Number.isFinite(t)) return null;
-            const p0 = framePts(frames, 0);
-            const iv = frameInterval(frames, 0);
+            const p0 = pts[0];
+            const iv = frameInterval(pts, 0);
             if (!Number.isFinite(p0) || !(iv > 0)) return null;
             // Coarse estimate, then refine locally -- avoids scanning a long
             // frame table on every pause.
@@ -560,8 +565,8 @@
             let bestErr = Infinity;
             const guess = Math.round((t - base) / iv);
             for (let i = guess - 3; i <= guess + 3; i += 1) {
-                if (i < 0 || i >= frames.length) continue;
-                const cand = resolveSlotTime("A", apiA, frames, i);
+                if (i < 0 || i >= pts.length) continue;
+                const cand = resolveSlotTime("A", apiA, pts, i);
                 if (cand == null) continue;
                 const err = Math.abs(cand - t);
                 if (err < bestErr) {
@@ -691,8 +696,8 @@
                 const st = frameLockState();
                 if (!st.ready) return false;
                 const off = lockOffsetFrames();
-                const tA = resolveSlotTime("A", apiA, st.framesA, refIdx);
-                const tB = resolveSlotTime("B", apiB, st.framesB, refIdx + off);
+                const tA = resolveSlotTime("A", apiA, st.ptsA, refIdx);
+                const tB = resolveSlotTime("B", apiB, st.ptsB, refIdx + off);
                 if (apiA && tA != null) {
                     if (typeof apiA.seekTo === "function") apiA.seekTo(tA, immediate);
                     else apiA.currentTime = tA;

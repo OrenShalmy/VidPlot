@@ -324,14 +324,26 @@ function setupPlotlyChart(jsonData) {
         return st && st.ready ? st : null;
     }
 
-    // Local interval from a slot's own table (not the CFR-only frameDuration).
-    function localInterval(frames, i) {
-        const here = parseFloat(frames[i]?.best_effort_timestamp_time);
-        const next = i + 1 < frames.length ? parseFloat(frames[i + 1]?.best_effort_timestamp_time) : NaN;
+    // Local interval from a slot's own timestamps (not the CFR-only frameDuration).
+    function localInterval(pts, i) {
+        const here = pts[i];
+        const next = i + 1 < pts.length ? pts[i + 1] : NaN;
         if (Number.isFinite(here) && Number.isFinite(next) && next > here) return next - here;
-        const prev = i > 0 ? parseFloat(frames[i - 1]?.best_effort_timestamp_time) : NaN;
+        const prev = i > 0 ? pts[i - 1] : NaN;
         if (Number.isFinite(here) && Number.isFinite(prev) && here > prev) return here - prev;
         return frameDuration || 1 / 30;
+    }
+
+    // Nearest index in a plain PTS array (the lock's tables are numbers, not
+    // frame objects -- they may come from the cheap packet probe).
+    function findIdxByPts(pts, time) {
+        let bestIdx = 0;
+        let minDiff = Infinity;
+        for (let i = 0; i < pts.length; i += 1) {
+            const d = Math.abs(time - pts[i]);
+            if (d < minDiff) { minDiff = d; bestIdx = i; }
+        }
+        return bestIdx;
     }
 
     function applyDirectSeek(clamped, token, pauseAfter, refIdx) {
@@ -401,8 +413,10 @@ function setupPlotlyChart(jsonData) {
         // In compare mode A is index-truth regardless of which slot is active
         // for inspection, so step against A's table -- not the active slot's.
         const lock = compareFrameLock();
-        const frames = lock ? lock.framesA : jsonData.frames;
-        if (!frames || frames.length === 0) return;
+        const ptsA = lock ? lock.ptsA : null;
+        const frames = lock ? null : jsonData.frames;
+        const count = lock ? ptsA.length : (frames ? frames.length : 0);
+        if (!count) return;
         pausePlayback();
 
         // Prefer the ref index the sync adapter is actually locked to. Deriving
@@ -415,9 +429,18 @@ function setupPlotlyChart(jsonData) {
         } else {
             const t = Number(videoPlayer.currentTime);
             if (!Number.isFinite(t)) return;
-            const currentIdx = findFrameIndexByTime(t, frames);
-            const closestTime = parseFloat(frames[currentIdx].best_effort_timestamp_time);
-            const iv = localInterval(frames, currentIdx);
+            const currentIdx = lock
+                ? findIdxByPts(ptsA, t)
+                : findFrameIndexByTime(t, frames);
+            const closestTime = lock
+                ? ptsA[currentIdx]
+                : parseFloat(frames[currentIdx].best_effort_timestamp_time);
+            const iv = lock
+                ? localInterval(ptsA, currentIdx)
+                : localInterval(
+                    frames.map((f) => parseFloat(f.best_effort_timestamp_time)),
+                    currentIdx,
+                );
             // If playhead is past the closest frame, forward should advance; if before, backward should retreat
             if (delta > 0 && t > closestTime + iv * 0.05) {
                 targetIdx = currentIdx + 1;
@@ -427,8 +450,10 @@ function setupPlotlyChart(jsonData) {
                 targetIdx = currentIdx + delta;
             }
         }
-        targetIdx = Math.max(0, Math.min(frames.length - 1, targetIdx));
-        const targetTime = parseFloat(frames[targetIdx].best_effort_timestamp_time);
+        targetIdx = Math.max(0, Math.min(count - 1, targetIdx));
+        const targetTime = lock
+            ? ptsA[targetIdx]
+            : parseFloat(frames[targetIdx].best_effort_timestamp_time);
         if (!Number.isFinite(targetTime)) return;
         seekToTime(targetTime, true, lock ? targetIdx : undefined);
     }

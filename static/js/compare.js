@@ -166,6 +166,8 @@
         applyTransform();
         syncLabels();
         setActiveSlot(window.vidplotCompare.activeSlot || "A");
+        ensureFrameTimes("A");
+        ensureFrameTimes("B");
         renderOffsetUi();
         requestAnimationFrame(() => {
             applyWipeCss();
@@ -264,6 +266,7 @@
         const s = slot === "B" ? "B" : "A";
         window.vidplotCompare.slots[s] = data;
         syncLabels();
+        ensureFrameTimes(s);
         renderOffsetUi();
     }
 
@@ -428,18 +431,55 @@
     // ---- B frame offset ----------------------------------------------------
     function lockState() {
         if (typeof window.vidplotCompareFrameLockState !== "function") {
-            return { ready: false, reason: "frame table not ready" };
+            return { ready: false, reason: "frame times not ready" };
         }
         return window.vidplotCompareFrameLockState();
     }
 
     // Nominal frame interval of A, for the ms readout only.
     function refInterval() {
-        const frames = getSlotData("A")?.jsonData?.frames;
-        if (!frames || frames.length < 2) return 1 / 30;
-        const a = parseFloat(frames[0].best_effort_timestamp_time);
-        const b = parseFloat(frames[1].best_effort_timestamp_time);
-        return Number.isFinite(a) && Number.isFinite(b) && b > a ? b - a : 1 / 30;
+        const st = lockState();
+        const pts = st.ready ? st.ptsA : null;
+        if (!pts || pts.length < 2) return 1 / 30;
+        return pts[1] > pts[0] ? pts[1] - pts[0] : 1 / 30;
+    }
+
+    // Cheap PTS-only probe, so the lock does not wait on the full decode.
+    // analyze-frames decodes every frame to get pict_type: 86 s (H.264) to
+    // 185 s (HEVC) on a 7-minute 1080p file. This is ~0.2 s on the same file,
+    // and the timestamps are identical.
+    const frameTimesInFlight = {};
+    function ensureFrameTimes(slot) {
+        const data = getSlotData(slot);
+        if (!data?.path) return;
+        if (Array.isArray(data.frameTimes) && data.frameTimes.length) return;
+        // Fetched unconditionally, even when the decoded table happens to be
+        // present already. It costs ~0.2 s and makes the lock's data source
+        // independent of which analysis finished first -- otherwise whether the
+        // fallback exists depends on load ordering, which is exactly the kind of
+        // thing that works on a short clip and fails on a 7-minute one.
+        if (frameTimesInFlight[slot] === data.path) return;
+        frameTimesInFlight[slot] = data.path;
+        const body = { path: data.path };
+        const input = data.jsonData?.format?.vidplot_input;
+        if (input) body.input = input;
+        fetch("/api/frame-times", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((out) => {
+                if (frameTimesInFlight[slot] !== data.path) return;
+                frameTimesInFlight[slot] = null;
+                const cur = getSlotData(slot);
+                if (!out || !cur || cur.path !== data.path) return;
+                if (Array.isArray(out.times) && out.times.length) {
+                    cur.frameTimes = out.times;
+                    renderOffsetUi();
+                }
+            })
+            .catch(() => { frameTimesInFlight[slot] = null; });
     }
 
     function renderOffsetUi() {

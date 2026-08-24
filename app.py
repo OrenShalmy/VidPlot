@@ -801,6 +801,59 @@ def analyze_frames_for_path(video_path, input_opts=None):
         'frames_pending': False,
         'qp_pending': ffmpeg_available,
     }
+
+
+def frame_times_for_path(video_path, input_opts=None):
+    """Presentation timestamps only, from packets — no decoding.
+
+    analyze_frames_for_path() has to decode every frame to report pict_type,
+    which on a 7-minute 1080p file costs 86 s (H.264) to 185 s (HEVC). The
+    compare frame lock needs nothing but the timestamps, and those are in the
+    packet headers: the same probe over the same file takes ~0.2 s.
+
+    Verified equal on a 12500-frame HEVC source: every packet pts_time matched
+    the decoded best_effort_timestamp_time exactly. Packets come out in decode
+    order, so they are sorted by PTS here (B-frames put them out of order).
+    """
+    video_path = validate_video_path(video_path)
+    filename = source_display_name(video_path)
+    opts = resolve_input_opts(video_path, input_opts)
+    config = load_config()
+    ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
+
+    cmd = [
+        ffprobe_bin,
+        '-hide_banner',
+        '-loglevel', 'error',
+        *ffprobe_input_args(video_path, opts),
+        '-select_streams', 'v:0',
+        '-print_format', 'json',
+        '-show_entries', 'packet=pts_time',
+        video_path,
+    ]
+    proc = run_ffprobe(cmd, filename)
+
+    try:
+        data = json.loads(proc.stdout or '{}')
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Invalid ffprobe packet output for {filename}') from exc
+
+    times = []
+    for pkt in data.get('packets', []):
+        raw = pkt.get('pts_time')
+        if raw is None:
+            continue
+        try:
+            times.append(float(raw))
+        except (TypeError, ValueError):
+            continue
+    times.sort()
+
+    return {
+        'source_path': video_path,
+        'times': times,
+        'count': len(times),
+    }
 # plus FFmpeg codecview for motion vectors / QP map:
 # https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
 SCOPE_ORDER = (
@@ -1269,6 +1322,22 @@ def analyze_frames_route():
     except subprocess.CalledProcessError as e:
         details = friendly_ffprobe_error(e.stderr if e.stderr else str(e))
         return jsonify({'error': 'Frame analysis failed', 'details': details}), 500
+
+
+@app.route('/api/frame-times', methods=['POST'])
+def frame_times_route():
+    """Cheap PTS-only probe for the compare frame lock (no decode)."""
+    data = request.get_json(silent=True) or {}
+    path = data.get('path') or current_source_path
+    try:
+        return jsonify(frame_times_for_path(path, data.get('input')))
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 400
+    except ValueError as e:
+        return jsonify({'error': str(e), 'details': str(e)}), 400
+    except subprocess.CalledProcessError as e:
+        details = friendly_ffprobe_error(e.stderr if e.stderr else str(e))
+        return jsonify({'error': 'Frame time probe failed', 'details': details}), 500
 
 
 @app.route('/api/analyze-qp', methods=['POST'])
