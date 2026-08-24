@@ -637,11 +637,14 @@
                 // suppressPauseSideEffects guard in plotly.js, and re-entering
                 // that is how you get a seek fight.
                 //
-                // NOTE: stepFrame() calls pausePlayback() before it seeks, so a
-                // step does a redundant re-assert here and then immediately
-                // seeks to the new index. Wasteful, not wrong -- do not
-                // "optimise" it away by dropping the re-assert, that is what
-                // keeps a plain pause frame-exact.
+                // NOTE: stepFrame() calls pausePlayback() BEFORE it seeks, so
+                // every step schedules a re-assert to the frame we are about to
+                // leave. That is not merely redundant -- if it lands after the
+                // step's own seek it pins the playhead and stepping silently
+                // stops working (observed: ref index stuck across 8 steps).
+                // cancelLockAssert() in every seek path is what makes it safe.
+                // Do not drop the re-assert either; it is what keeps a plain
+                // pause frame-exact.
                 const idx = lastRefIdx != null ? lastRefIdx : refIdxNow();
                 if (idx != null) {
                     cancelLockAssert();
