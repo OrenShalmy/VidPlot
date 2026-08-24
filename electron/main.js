@@ -32,6 +32,21 @@ function repoRoot() {
     return path.resolve(__dirname, '..');
 }
 
+/** Window / taskbar icon (macOS uses the .icns from the app bundle). */
+function windowIconPath() {
+    if (process.platform === 'darwin') return undefined;
+    const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+    const bundled = path.join(__dirname, 'assets', file);
+    if (fs.existsSync(bundled)) return bundled;
+    const fallback = path.join(
+        repoRoot(),
+        'static',
+        'icons',
+        process.platform === 'win32' ? 'VidPlot.ico' : 'icon-512x512.png'
+    );
+    return fs.existsSync(fallback) ? fallback : undefined;
+}
+
 function sidecarLaunch() {
     if (app.isPackaged) {
         const dir = path.join(process.resourcesPath, 'vidplot-server');
@@ -244,6 +259,7 @@ function stopFlask() {
 }
 
 async function createWindow(url) {
+    const icon = windowIconPath();
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
@@ -251,6 +267,7 @@ async function createWindow(url) {
         minHeight: 640,
         backgroundColor: '#181c24',
         title: 'VidPlot',
+        ...(icon ? { icon } : {}),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -312,6 +329,9 @@ if (startupPath) pendingOpenPath = startupPath;
 
 if (gotSingleInstanceLock) {
     app.whenReady().then(async () => {
+        if (process.platform === 'win32') {
+            app.setAppUserModelId(app.isPackaged ? 'com.vidplot.app' : process.execPath);
+        }
         try {
             const port = await findFreePort();
             const url = `http://127.0.0.1:${port}/`;

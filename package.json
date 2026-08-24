@@ -25,6 +25,7 @@
     "productName": "VidPlot",
     "asar": true,
     "forceCodeSigning": false,
+    "icon": "static/icons/icon-512x512.png",
     "directories": {
       "output": "dist-electron"
     },
@@ -88,6 +89,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "installerIcon": "static/icons/VidPlot.ico",
+      "uninstallerIcon": "static/icons/VidPlot.ico",
+      "installerHeaderIcon": "static/icons/VidPlot.ico",
       "artifactName": "VidPlot-Windows-${arch}-Setup.${ext}"
     },
     "linux": {
@@ -96,7 +100,7 @@
       "executableArgs": [
         "--no-sandbox"
       ],
-      "icon": "static/icons/icon-512x512.png",
+      "icon": "static/icons/linux",
       "target": [
         "zip",
         "AppImage"

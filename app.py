@@ -32,6 +32,13 @@ HARD_PREVIEW_CODECS = frozenset({
     'dnxhd', 'dnxhr', 'v210', 'rawvideo', 'yuv4', 'wrapped_avframe',
 })
 
+# Windows: ffmpeg/ffprobe are console apps; without this, each spawn flashes a CMD window.
+_SUBPROCESS_NO_WINDOW = (
+    {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)}
+    if sys.platform == 'win32'
+    else {}
+)
+
 
 def primary_video_codec(json_data):
     for stream in json_data.get('streams') or []:
@@ -516,7 +523,7 @@ def friendly_ffprobe_error(stderr, filename=''):
 
 def run_ffprobe(cmd, filename=''):
     """Run ffprobe and raise ValueError with a readable message on failure."""
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, capture_output=True, text=True, **_SUBPROCESS_NO_WINDOW)
     if proc.returncode != 0:
         raise ValueError(friendly_ffprobe_error(proc.stderr, filename))
     return proc
@@ -564,6 +571,7 @@ def extract_mean_qp_per_frame(ffmpeg_bin, video_path, input_opts=None):
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            **_SUBPROCESS_NO_WINDOW,
         )
     except OSError:
         return []
@@ -1043,7 +1051,7 @@ def render_preview_jpeg(video_path, time_sec, max_width=1920, input_opts=None):
         '-q:v', '3',
         'pipe:1',
     ]
-    proc = subprocess.run(cmd, capture_output=True)
+    proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
         raise ValueError(err or 'Preview frame failed')
@@ -1098,7 +1106,7 @@ def render_scope_jpeg(video_path, time_sec, filters, input_opts=None):
         '-q:v', '3',
         'pipe:1',
     ])
-    proc = subprocess.run(cmd, capture_output=True)
+    proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
         raise ValueError(err or 'Scope preview failed')
