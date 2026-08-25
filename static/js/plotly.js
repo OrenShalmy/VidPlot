@@ -316,7 +316,37 @@ function setupPlotlyChart(jsonData) {
         return Promise.resolve();
     }
 
-    function applyDirectSeek(clamped, token, pauseAfter) {
+    // Compare frame lock, when both slots have a settled frame table.
+    function compareFrameLock() {
+        if (!window.vidplotCompare?.enabled) return null;
+        if (typeof window.vidplotCompareFrameLockState !== 'function') return null;
+        const st = window.vidplotCompareFrameLockState();
+        return st && st.ready ? st : null;
+    }
+
+    // Local interval from a slot's own timestamps (not the CFR-only frameDuration).
+    function localInterval(pts, i) {
+        const here = pts[i];
+        const next = i + 1 < pts.length ? pts[i + 1] : NaN;
+        if (Number.isFinite(here) && Number.isFinite(next) && next > here) return next - here;
+        const prev = i > 0 ? pts[i - 1] : NaN;
+        if (Number.isFinite(here) && Number.isFinite(prev) && here > prev) return here - prev;
+        return frameDuration || 1 / 30;
+    }
+
+    // Nearest index in a plain PTS array (the lock's tables are numbers, not
+    // frame objects -- they may come from the cheap packet probe).
+    function findIdxByPts(pts, time) {
+        let bestIdx = 0;
+        let minDiff = Infinity;
+        for (let i = 0; i < pts.length; i += 1) {
+            const d = Math.abs(time - pts[i]);
+            if (d < minDiff) { minDiff = d; bestIdx = i; }
+        }
+        return bestIdx;
+    }
+
+    function applyDirectSeek(clamped, token, pauseAfter, refIdx) {
         if (token !== seekGeneration) return;
         videoPlayer = media();
         transport.video = videoPlayer;
@@ -331,6 +361,15 @@ function setupPlotlyChart(jsonData) {
             updateCurrentFrameMarker(clamped);
         };
         videoPlayer.addEventListener('seeked', onSeeked);
+        // Frame-exact path: hand the ref INDEX to the sync adapter so each slot
+        // resolves its own time. A single shared `clamped` cannot be right for
+        // both slots once they differ in start_time or preview path.
+        if (typeof refIdx === 'number'
+            && typeof videoPlayer.seekToFrame === 'function'
+            && videoPlayer.seekToFrame(refIdx, true)) {
+            updateCurrentFrameMarker(clamped);
+            return;
+        }
         if (typeof videoPlayer.seekTo === 'function') {
             videoPlayer.seekTo(clamped, true);
         } else if (typeof videoPlayer.fastSeek === 'function') {
@@ -345,22 +384,25 @@ function setupPlotlyChart(jsonData) {
         updateCurrentFrameMarker(clamped);
     }
 
-    function seekToTime(time, pauseAfter) {
+    function seekToTime(time, pauseAfter, refIdx) {
         const maxT = effectiveDuration();
         const clamped = Math.max(0, Math.min(maxT, time));
         const token = ++seekGeneration;
         const applySeek = () => {
             if (token !== seekGeneration) return;
-            applyDirectSeek(clamped, token, pauseAfter);
+            applyDirectSeek(clamped, token, pauseAfter, refIdx);
             if (isFfmpegPreview()) return;
             // If the seek was ignored (common after OS focus return), wake and retry
             requestAnimationFrame(() => {
                 if (token !== seekGeneration) return;
-                if (Math.abs((videoPlayer.currentTime || 0) - clamped) <= 0.08) return;
+                // Frame-locked seeks land half a frame off `clamped` by design,
+                // so widen the "did it move" test to a frame either way.
+                const tol = typeof refIdx === 'number' ? Math.max(0.08, frameDuration) : 0.08;
+                if (Math.abs((videoPlayer.currentTime || 0) - clamped) <= tol) return;
                 transport.mediaNeedsWake = true;
                 wakeMediaForSeek().then(() => {
                     if (token !== seekGeneration) return;
-                    applyDirectSeek(clamped, token, pauseAfter);
+                    applyDirectSeek(clamped, token, pauseAfter, refIdx);
                 });
             });
         };
@@ -368,25 +410,52 @@ function setupPlotlyChart(jsonData) {
         wakeMediaForSeek().then(applySeek);
     }
     function stepFrame(delta) {
-        if (!jsonData.frames || jsonData.frames.length === 0) return;
+        // In compare mode A is index-truth regardless of which slot is active
+        // for inspection, so step against A's table -- not the active slot's.
+        const lock = compareFrameLock();
+        const ptsA = lock ? lock.ptsA : null;
+        const frames = lock ? null : jsonData.frames;
+        const count = lock ? ptsA.length : (frames ? frames.length : 0);
+        if (!count) return;
         pausePlayback();
-        const t = Number(videoPlayer.currentTime);
-        if (!Number.isFinite(t)) return;
-        const currentIdx = findFrameIndexByTime(t, jsonData.frames);
-        const closestTime = parseFloat(jsonData.frames[currentIdx].best_effort_timestamp_time);
-        let targetIdx = currentIdx;
-        // If playhead is past the closest frame, forward should advance; if before, backward should retreat
-        if (delta > 0 && t > closestTime + frameDuration * 0.05) {
-            targetIdx = currentIdx + 1;
-        } else if (delta < 0 && t < closestTime - frameDuration * 0.05) {
-            targetIdx = currentIdx - 1;
+
+        // Prefer the ref index the sync adapter is actually locked to. Deriving
+        // position from currentTime is what forces the boundary tolerance
+        // below, and on the ffmpeg path (which lands half a frame BELOW the
+        // PTS) it derives one frame low.
+        let targetIdx = null;
+        if (lock && typeof videoPlayer._vidplotRefIdx === 'number') {
+            targetIdx = videoPlayer._vidplotRefIdx + delta;
         } else {
-            targetIdx = currentIdx + delta;
+            const t = Number(videoPlayer.currentTime);
+            if (!Number.isFinite(t)) return;
+            const currentIdx = lock
+                ? findIdxByPts(ptsA, t)
+                : findFrameIndexByTime(t, frames);
+            const closestTime = lock
+                ? ptsA[currentIdx]
+                : parseFloat(frames[currentIdx].best_effort_timestamp_time);
+            const iv = lock
+                ? localInterval(ptsA, currentIdx)
+                : localInterval(
+                    frames.map((f) => parseFloat(f.best_effort_timestamp_time)),
+                    currentIdx,
+                );
+            // If playhead is past the closest frame, forward should advance; if before, backward should retreat
+            if (delta > 0 && t > closestTime + iv * 0.05) {
+                targetIdx = currentIdx + 1;
+            } else if (delta < 0 && t < closestTime - iv * 0.05) {
+                targetIdx = currentIdx - 1;
+            } else {
+                targetIdx = currentIdx + delta;
+            }
         }
-        targetIdx = Math.max(0, Math.min(jsonData.frames.length - 1, targetIdx));
-        const targetTime = parseFloat(jsonData.frames[targetIdx].best_effort_timestamp_time);
+        targetIdx = Math.max(0, Math.min(count - 1, targetIdx));
+        const targetTime = lock
+            ? ptsA[targetIdx]
+            : parseFloat(frames[targetIdx].best_effort_timestamp_time);
         if (!Number.isFinite(targetTime)) return;
-        seekToTime(targetTime, true);
+        seekToTime(targetTime, true, lock ? targetIdx : undefined);
     }
 
     // --- Variable Setup ---

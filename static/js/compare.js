@@ -11,6 +11,12 @@
             orientation: "vertical",
             wipe: 0.5,
             activeSlot: "A",
+            // Integer frame offset applied to B. A is index-truth, so this is
+            // always "B is N frames later than A". Deliberately NOT persisted:
+            // it is specific to one file pair, and a silently applied stale
+            // value is worse than re-nudging (see WIPE_KEY/ORIENT_KEY, which
+            // are global UI prefs and reasonably do persist).
+            offsetFrames: 0,
             zoom: 1,
             panX: 0,
             panY: 0,
@@ -160,8 +166,12 @@
         applyTransform();
         syncLabels();
         setActiveSlot(window.vidplotCompare.activeSlot || "A");
+        ensureFrameTimes("A");
+        ensureFrameTimes("B");
+        renderOffsetUi();
         requestAnimationFrame(() => {
             applyWipeCss();
+            renderOffsetUi();
             if (typeof window.vidplotResizeFrameChart === "function") {
                 window.vidplotResizeFrameChart();
             }
@@ -200,6 +210,7 @@
         cmp.panX = 0;
         cmp.panY = 0;
         cmp.activeSlot = "A";
+        cmp.offsetFrames = 0;
         if (!cmp.slots.A && window.vidplotCurrentSourcePath) {
             cmp.slots.A = {
                 path: window.vidplotCurrentSourcePath,
@@ -255,6 +266,8 @@
         const s = slot === "B" ? "B" : "A";
         window.vidplotCompare.slots[s] = data;
         syncLabels();
+        ensureFrameTimes(s);
+        renderOffsetUi();
     }
 
     function slotFromPointer(clientX, clientY) {
@@ -415,6 +428,131 @@
         });
     }
 
+    // ---- B frame offset ----------------------------------------------------
+    function lockState() {
+        if (typeof window.vidplotCompareFrameLockState !== "function") {
+            return { ready: false, reason: "frame times not ready" };
+        }
+        return window.vidplotCompareFrameLockState();
+    }
+
+    // Nominal frame interval of A, for the ms readout only.
+    function refInterval() {
+        const st = lockState();
+        const pts = st.ready ? st.ptsA : null;
+        if (!pts || pts.length < 2) return 1 / 30;
+        return pts[1] > pts[0] ? pts[1] - pts[0] : 1 / 30;
+    }
+
+    // Cheap PTS-only probe, so the lock does not wait on the full decode.
+    // analyze-frames decodes every frame to get pict_type: 86 s (H.264) to
+    // 185 s (HEVC) on a 7-minute 1080p file. This is ~0.2 s on the same file,
+    // and the timestamps are identical.
+    const frameTimesInFlight = {};
+    function ensureFrameTimes(slot) {
+        const data = getSlotData(slot);
+        if (!data?.path) return;
+        if (Array.isArray(data.frameTimes) && data.frameTimes.length) return;
+        // Fetched unconditionally, even when the decoded table happens to be
+        // present already. It costs ~0.2 s and makes the lock's data source
+        // independent of which analysis finished first -- otherwise whether the
+        // fallback exists depends on load ordering, which is exactly the kind of
+        // thing that works on a short clip and fails on a 7-minute one.
+        if (frameTimesInFlight[slot] === data.path) return;
+        frameTimesInFlight[slot] = data.path;
+        const body = { path: data.path };
+        const input = data.jsonData?.format?.vidplot_input;
+        if (input) body.input = input;
+        fetch("/api/frame-times", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((out) => {
+                if (frameTimesInFlight[slot] !== data.path) return;
+                frameTimesInFlight[slot] = null;
+                const cur = getSlotData(slot);
+                if (!out || !cur || cur.path !== data.path) return;
+                if (Array.isArray(out.times) && out.times.length) {
+                    cur.frameTimes = out.times;
+                    renderOffsetUi();
+                }
+            })
+            .catch(() => { frameTimesInFlight[slot] = null; });
+    }
+
+    function renderOffsetUi() {
+        const group = el("compareOffsetGroup");
+        const input = el("compareOffsetInput");
+        const readout = el("compareOffsetReadout");
+        if (!group || !input || !readout) return;
+        const st = lockState();
+        const n = window.vidplotCompare.offsetFrames || 0;
+        if (String(input.value) !== String(n) && document.activeElement !== input) {
+            input.value = String(n);
+        }
+        group.dataset.lock = st.ready ? "ready" : "pending";
+        if (!st.ready) {
+            // Never silently degrade to a time-only offset -- say so.
+            readout.dataset.state = "pending";
+            readout.textContent = `frame lock off \u2014 ${st.reason}`;
+            input.disabled = true;
+            const m = el("compareOffsetMinus");
+            const pl = el("compareOffsetPlus");
+            if (m) m.disabled = true;
+            if (pl) pl.disabled = true;
+            return;
+        }
+        readout.dataset.state = "ready";
+        input.disabled = false;
+        const m = el("compareOffsetMinus");
+        const pl = el("compareOffsetPlus");
+        if (m) m.disabled = false;
+        if (pl) pl.disabled = false;
+        const ms = n * refInterval() * 1000;
+        const sign = n > 0 ? "+" : n < 0 ? "\u2212" : "+";
+        const msTxt = `${sign}${Math.abs(ms).toFixed(1)} ms`;
+        readout.textContent = `B ${sign}${Math.abs(n)} frame${Math.abs(n) === 1 ? "" : "s"} (${msTxt})`;
+    }
+
+    function setOffsetFrames(n, opts = {}) {
+        const v = Math.round(Number(n));
+        window.vidplotCompare.offsetFrames = Number.isFinite(v) ? v : 0;
+        renderOffsetUi();
+        if (opts.reassert === false) return;
+        // Show the change immediately: re-assert the lock at the current index.
+        const media = typeof window.vidplotGetMedia === "function" ? window.vidplotGetMedia() : null;
+        if (media && typeof media.seekToFrame === "function") {
+            const idx = typeof media._vidplotRefIdx === "number" ? media._vidplotRefIdx : null;
+            if (idx != null) media.seekToFrame(idx, true);
+        }
+    }
+
+    function nudgeOffset(delta) {
+        if (!lockState().ready) return;
+        setOffsetFrames((window.vidplotCompare.offsetFrames || 0) + delta);
+    }
+
+    function bindOffsetKeys() {
+        // Alt+Arrow: the transport handler in plotly.js bails out early on
+        // altKey, so this cannot collide with it. `<`/`>` and shift-comma /
+        // shift-period are already frame step, so they are not available.
+        // Capture on document so this also beats the divider's own arrow
+        // handler when the divider happens to hold focus.
+        document.addEventListener("keydown", (e) => {
+            if (!isEnabled()) return;
+            if (!e.altKey || e.metaKey || e.ctrlKey) return;
+            const isLeft = e.key === "ArrowLeft" || e.code === "ArrowLeft";
+            const isRight = e.key === "ArrowRight" || e.code === "ArrowRight";
+            if (!isLeft && !isRight) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+            nudgeOffset(isRight ? 1 : -1);
+        }, true);
+    }
+
     function bindToolbar() {
         const vert = el("compareOrientVertical");
         const horiz = el("compareOrientHorizontal");
@@ -443,6 +581,23 @@
                 exitCompareMode();
             });
         }
+
+        const minus = el("compareOffsetMinus");
+        const plus = el("compareOffsetPlus");
+        const input = el("compareOffsetInput");
+        if (minus) minus.addEventListener("click", () => nudgeOffset(-1));
+        if (plus) plus.addEventListener("click", () => nudgeOffset(1));
+        if (input) {
+            input.addEventListener("change", () => setOffsetFrames(input.value));
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    setOffsetFrames(input.value);
+                    input.blur();
+                }
+            });
+        }
+        renderOffsetUi();
     }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -452,6 +607,7 @@
         bindZoomPan();
         bindSlotClicks();
         bindToolbar();
+        bindOffsetKeys();
     });
 
     window.vidplotEnterCompareMode = enterCompareMode;
@@ -462,4 +618,6 @@
     window.vidplotSelectCompareSlot = setActiveSlot;
     window.vidplotGetCompareSlotElements = slotEls;
     window.vidplotApplyCompareWipe = applyWipeCss;
+    window.vidplotSetCompareOffsetFrames = setOffsetFrames;
+    window.vidplotRenderCompareOffsetUi = renderOffsetUi;
 })();

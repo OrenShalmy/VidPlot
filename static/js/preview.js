@@ -381,11 +381,142 @@
     }
 
     const slotAdapters = { A: null, B: null };
+
+    // ---- Compare frame lock -------------------------------------------------
+    // A is index-truth. A ref index always means "A's frame N"; B is resolved as
+    // N + offsetFrames against B's OWN timestamp table.
+    //
+    // The two preview paths round a seek in OPPOSITE directions, and sit on
+    // different time bases. Both were measured, not assumed:
+    //
+    //   native <video>  floor  (shows the frame whose interval contains t)
+    //                   absolute container timeline (Chrome does NOT normalise
+    //                   a non-zero start_time; currentTime reads 5.0167 on a
+    //                   file whose first PTS is 5.0)
+    //   ffmpeg -> canvas  ceiling (app.py seeks `-ss t` BEFORE -i, which yields
+    //                   the first frame with PTS >= t)
+    //                   start_time-relative (ffmpeg's -ss is relative to the
+    //                   container start, so absolute PTS must be rebased)
+    //
+    // So a single shared "mid frame" time cannot serve both: forward-nudging the
+    // ffmpeg path lands on N+1 every time, backward-nudging the native path
+    // lands on N-1 every time. Resolution is per-slot and path-aware.
+    function slotJson(slot) {
+        return (typeof window.vidplotGetCompareSlot === "function"
+            && window.vidplotGetCompareSlot(slot)?.jsonData) || null;
+    }
+
+    // Presentation timestamps for a slot, as plain numbers.
+    //
+    // Prefers the full decoded frame table when it has landed, but falls back to
+    // the cheap packet-PTS probe (/api/frame-times, cached on the slot). The
+    // full table costs a whole-file decode -- 86 s to 185 s on a 7-minute 1080p
+    // broadcast file -- and the lock needs nothing from it but these numbers.
+    function slotPts(slot) {
+        const json = slotJson(slot);
+        const frames = json?.frames;
+        if (Array.isArray(frames) && frames.length && !json.frames_pending) {
+            const out = new Array(frames.length);
+            for (let i = 0; i < frames.length; i += 1) {
+                out[i] = parseFloat(frames[i].best_effort_timestamp_time);
+            }
+            return out;
+        }
+        const fast = window.vidplotGetCompareSlot?.(slot)?.frameTimes;
+        return Array.isArray(fast) && fast.length ? fast : null;
+    }
+
+    // Container start offset for a slot, in seconds. Only the ffmpeg path needs
+    // it; the native path already speaks the absolute timeline.
+    function slotStartTime(slot) {
+        const json = slotJson(slot);
+        if (!json) return 0;
+        const vid = (json.streams || []).find((st) => st.codec_type === "video");
+        const raw = vid?.start_time ?? json.format?.start_time;
+        const v = parseFloat(raw);
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    // Local interval around frame i, from this slot's own timestamps.
+    // Deliberately NOT a global frameDuration (pts[1]-pts[0]), which is CFR-only
+    // and wrong if the stream opens with reordering or an edit list.
+    function frameInterval(pts, i) {
+        const here = pts[i];
+        const next = i + 1 < pts.length ? pts[i + 1] : NaN;
+        if (Number.isFinite(here) && Number.isFinite(next) && next > here) return next - here;
+        const prev = i > 0 ? pts[i - 1] : NaN;
+        if (Number.isFinite(here) && Number.isFinite(prev) && here > prev) return here - prev;
+        return 1 / 30;
+    }
+
+    function clampIdx(pts, i) {
+        return Math.max(0, Math.min(pts.length - 1, i));
+    }
+
+    function isFfmpegSlot(api) {
+        return !!api && api._vidplotMode === "ffmpeg";
+    }
+
+    // Resolve a ref index into the seek time for one slot.
+    function resolveSlotTime(slot, api, pts, idx) {
+        const i = clampIdx(pts, idx);
+        const t = pts[i];
+        if (!Number.isFinite(t)) return null;
+        const iv = frameInterval(pts, i);
+        if (isFfmpegSlot(api)) {
+            // ceiling semantics: aim half a frame BELOW, rebased to the
+            // container start. Survives app.py's `-ss {t:.3f}` quantisation
+            // (verified 200/200 at 30p, 300/300 at 59.94p).
+            return Math.max(0, t - slotStartTime(slot) - iv / 2);
+        }
+        // floor semantics: aim half a frame ABOVE, absolute timeline.
+        return t + iv / 2;
+    }
+
+    function lockOffsetFrames() {
+        const v = parseInt(window.vidplotCompare?.offsetFrames, 10);
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    function frameLockState() {
+        const ptsA = slotPts("A");
+        const ptsB = slotPts("B");
+        if (!ptsA || !ptsB) return { ready: false, reason: "frame times not ready" };
+        return { ready: true, reason: "", ptsA, ptsB };
+    }
+
+    function offsetSeconds() {
+        // Scalar seconds equivalent of the frame offset, for the playback-time
+        // drift corrector (frame-exactness during playback is out of scope).
+        const st = frameLockState();
+        if (!st.ready) return 0;
+        const off = lockOffsetFrames();
+        if (!off) return 0;
+        return off * frameInterval(st.ptsA, 0);
+    }
+
+    window.vidplotCompareFrameLockState = frameLockState;
+    window.vidplotCompareOffsetSeconds = offsetSeconds;
+
     let singleSnapshot = null;
 
     function createCompareSyncAdapter(apiA, apiB) {
         const events = createEventTarget();
         const master = apiA || apiB;
+        let lastRefIdx = null;
+        let lockAssertTimer = null;
+
+        // The pause re-assert is deferred (it has to let the pause settle), so
+        // any seek issued in the meantime must cancel it. stepFrame() calls
+        // pausePlayback() BEFORE it seeks, so without this the stale re-assert
+        // lands after the step and pins the playhead to the previous frame --
+        // stepping silently stops working.
+        function cancelLockAssert() {
+            if (lockAssertTimer) {
+                clearTimeout(lockAssertTimer);
+                lockAssertTimer = null;
+            }
+        }
 
         function both(fn) {
             if (apiA && fn) {
@@ -415,11 +546,44 @@
             return 0;
         }
 
+        // Where is the playhead, in A-index terms? Inverts resolveSlotTime by
+        // construction, so it is correct for either preview path rather than
+        // assuming the landing time equals the PTS.
+        function refIdxNow() {
+            const st = frameLockState();
+            if (!st.ready || !apiA) return null;
+            const pts = st.ptsA;
+            const t = Number(apiA.currentTime);
+            if (!Number.isFinite(t)) return null;
+            const p0 = pts[0];
+            const iv = frameInterval(pts, 0);
+            if (!Number.isFinite(p0) || !(iv > 0)) return null;
+            // Coarse estimate, then refine locally -- avoids scanning a long
+            // frame table on every pause.
+            const base = isFfmpegSlot(apiA) ? p0 - slotStartTime("A") : p0;
+            let best = null;
+            let bestErr = Infinity;
+            const guess = Math.round((t - base) / iv);
+            for (let i = guess - 3; i <= guess + 3; i += 1) {
+                if (i < 0 || i >= pts.length) continue;
+                const cand = resolveSlotTime("A", apiA, pts, i);
+                if (cand == null) continue;
+                const err = Math.abs(cand - t);
+                if (err < bestErr) {
+                    bestErr = err;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
         const api = {
             get currentTime() {
                 return master ? master.currentTime : 0;
             },
             set currentTime(t) {
+                lastRefIdx = null;
+                cancelLockAssert();
                 both((a) => {
                     if (typeof a.seekTo === "function") a.seekTo(t, true);
                     else a.currentTime = t;
@@ -456,6 +620,12 @@
                 return master ? master.videoHeight : 0;
             },
             play() {
+                // Playback moves the playhead without going through any seek,
+                // so a tracked ref index goes stale the moment we start. Drop
+                // it: pause() then derives the frame actually reached, instead
+                // of re-asserting the frame play STARTED from (which rewinds).
+                lastRefIdx = null;
+                cancelLockAssert();
                 return Promise.all([
                     apiA ? apiA.play() : Promise.resolve(),
                     apiB ? apiB.play() : Promise.resolve(),
@@ -463,8 +633,36 @@
             },
             pause() {
                 both((a) => a.pause());
+                // The drift corrector only guarantees B is within 60 ms of
+                // target, so on pause B is parked one to three frames off.
+                // Re-assert the exact lock once the pause has settled.
+                //
+                // Hung off pause() rather than the 'pause' event on purpose:
+                // the event path runs through transport.onPause and the
+                // suppressPauseSideEffects guard in plotly.js, and re-entering
+                // that is how you get a seek fight.
+                //
+                // NOTE: stepFrame() calls pausePlayback() BEFORE it seeks, so
+                // every step schedules a re-assert to the frame we are about to
+                // leave. That is not merely redundant -- if it lands after the
+                // step's own seek it pins the playhead and stepping silently
+                // stops working (observed: ref index stuck across 8 steps).
+                // cancelLockAssert() in every seek path is what makes it safe.
+                // Do not drop the re-assert either; it is what keeps a plain
+                // pause frame-exact.
+                const idx = lastRefIdx != null ? lastRefIdx : refIdxNow();
+                if (idx != null) {
+                    cancelLockAssert();
+                    lockAssertTimer = setTimeout(() => {
+                        lockAssertTimer = null;
+                        if (!api.paused) return;
+                        api.seekToFrame(idx, true);
+                    }, 0);
+                }
             },
             fastSeek(t) {
+                lastRefIdx = null;
+                cancelLockAssert();
                 both((a) => {
                     if (typeof a.fastSeek === "function") a.fastSeek(t);
                     else if (typeof a.seekTo === "function") a.seekTo(t, true);
@@ -481,10 +679,38 @@
                 if (master) master.removeEventListener(type, fn);
             },
             seekTo(t, immediate) {
+                // A time-based seek (chart click, arrow key, shuttle) makes the
+                // tracked ref index stale -- drop it so it gets re-derived.
+                lastRefIdx = null;
+                cancelLockAssert();
                 both((a) => {
                     if (typeof a.seekTo === "function") a.seekTo(t, immediate);
                     else a.currentTime = t;
                 });
+            },
+            // Frame-exact counterpart to seekTo: each slot resolves the ref
+            // index against its own table, so neither a start_time difference
+            // nor the two paths' opposite rounding can smear the landing.
+            seekToFrame(refIdx, immediate) {
+                cancelLockAssert();
+                const st = frameLockState();
+                if (!st.ready) return false;
+                const off = lockOffsetFrames();
+                const tA = resolveSlotTime("A", apiA, st.ptsA, refIdx);
+                const tB = resolveSlotTime("B", apiB, st.ptsB, refIdx + off);
+                if (apiA && tA != null) {
+                    if (typeof apiA.seekTo === "function") apiA.seekTo(tA, immediate);
+                    else apiA.currentTime = tA;
+                }
+                if (apiB && tB != null) {
+                    if (typeof apiB.seekTo === "function") apiB.seekTo(tB, immediate);
+                    else apiB.currentTime = tB;
+                }
+                lastRefIdx = refIdx;
+                return true;
+            },
+            get _vidplotRefIdx() {
+                return lastRefIdx != null ? lastRefIdx : refIdxNow();
             },
             _vidplotMode: "compare-sync",
         };
@@ -493,9 +719,18 @@
             master.addEventListener("timeupdate", () => {
                 events.dispatch("timeupdate");
                 if (apiA && apiB && apiA !== apiB) {
-                    const drift = Math.abs((apiB.currentTime || 0) - (apiA.currentTime || 0));
+                    // The corrector has to know about the intended separation,
+                    // otherwise the offset itself reads as drift: anything over
+                    // the 60 ms threshold gets slammed back onto A's exact time
+                    // on the first timeupdate (~4 Hz), and anything under it
+                    // survives only until natural drift pushes the sum past
+                    // threshold -- which is why small offsets appeared to work
+                    // intermittently. Seconds, not frames: preserving the lock
+                    // is the goal here, not frame-exactness while running.
+                    const target = (apiA.currentTime || 0) + offsetSeconds();
+                    const drift = Math.abs((apiB.currentTime || 0) - target);
                     if (drift > 0.06 && typeof apiB.seekTo === "function") {
-                        apiB.seekTo(apiA.currentTime, false);
+                        apiB.seekTo(target, false);
                     }
                 }
             });

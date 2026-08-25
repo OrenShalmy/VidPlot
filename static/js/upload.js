@@ -708,6 +708,11 @@ document.addEventListener("DOMContentLoaded", function () {
                     window.vidplotCompare.slots[slot].jsonData = jsonData;
                 }
                 window.vidplotJsonData = jsonData;
+                // Frame lock readiness depends on both slots' tables having
+                // landed, so refresh the offset readout now one of them has.
+                if (typeof window.vidplotRenderCompareOffsetUi === "function") {
+                    window.vidplotRenderCompareOffsetUi();
+                }
 
                 try {
                     if (typeof updatemediaInfo === "function") {

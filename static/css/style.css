@@ -1952,6 +1952,62 @@ body:has(#sideMenu.visible) #workspace {
   margin-left: auto;
 }
 
+.compare-offset {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+.compare-offset[data-lock="pending"] {
+  opacity: 0.55;
+}
+
+.compare-offset-tag {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.compare-offset-step {
+  min-width: 30px;
+  padding: 0 7px;
+}
+
+.compare-offset-input {
+  width: 52px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.compare-offset-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+.compare-offset-readout {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.compare-offset-readout[data-state="pending"] {
+  color: var(--magenta);
+}
+
 .compare-viewport {
   flex: 1 1 auto;
   min-height: 0;
