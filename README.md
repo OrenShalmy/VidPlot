@@ -78,9 +78,11 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 
 ## Quick start
 
-1. **Download** a build from [GitHub Releases](https://github.com/Oren-Beamr/VidPlot/releases) (MacOS arm64, Windows x64/arm64, Linux x64/arm64).
+1. **Download** a build from [GitHub Releases](https://github.com/orenshalmy/VidPlot/releases) (MacOS arm64, Windows x64/arm64, Linux x64/arm64).
 2. Install [FFmpeg](https://ffmpeg.org/) so `ffprobe` and `ffmpeg` are on your `PATH` (or set paths in Options).
 3. Run the app, drop a video, and wait for properties → frame graph → QP (when supported).
+
+Step-by-step UI walkthrough with screenshots: **[How to use](docs/how-to-use.md)**.
 
 Supported containers and elementary streams include MP4, MOV, MKV, TS, AVI, WebM, H.264/H.265, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
 
