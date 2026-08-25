@@ -33,6 +33,8 @@ HARD_PREVIEW_CODECS = frozenset({
     'prores', 'prores_aw', 'prores_ks', 'prores_lt', 'prores_hq',
     'prores_4444', 'prores_xq', 'prores_vlog',
     'dnxhd', 'dnxhr', 'v210', 'rawvideo', 'yuv4', 'wrapped_avframe',
+    # HEVC in MPEG-TS / MP4 often fails silently (black <video>) in Electron/Chromium
+    'hevc', 'h265', 'hev1', 'hvc1',
 })
 
 # Windows: ffmpeg/ffprobe are console apps; without this, each spawn flashes a CMD window.
@@ -50,10 +52,24 @@ def primary_video_codec(json_data):
     return ''
 
 
-def preview_hint_for_codec(codec):
+def primary_video_pix_fmt(json_data):
+    for stream in json_data.get('streams') or []:
+        if stream.get('codec_type') == 'video':
+            return (stream.get('pix_fmt') or '').lower()
+    return ''
+
+
+def preview_hint_for_codec(codec, pix_fmt=None):
     if not codec:
         return 'native'
     if codec in HARD_PREVIEW_CODECS or codec.startswith('prores') or codec.startswith('yuv'):
+        return 'ffmpeg'
+    # 4:2:2 / high bit-depth H.264 is rarely decodeable in Chromium <video>
+    fmt = (pix_fmt or '').lower()
+    if codec in ('h264', 'avc1', 'avc3') and fmt and (
+        '422' in fmt or '444' in fmt or '10le' in fmt or '10be' in fmt
+        or '12le' in fmt or '12be' in fmt
+    ):
         return 'ffmpeg'
     return 'native'
 
@@ -724,8 +740,9 @@ def analyze_video_file(video_path, input_opts=None):
     # Unique ?v= per file so Chromium does not reuse a cached /media/source clip.
     video_url = video_path if remote else local_video_playback_url(video_path)
     codec = primary_video_codec(json_data)
+    pix_fmt = primary_video_pix_fmt(json_data)
     format_name = (json_data.get('format') or {}).get('format_name') or ''
-    preview_hint = preview_hint_for_codec(codec)
+    preview_hint = preview_hint_for_codec(codec, pix_fmt)
     if opts or 'rawvideo' in format_name or 'yuv4mpeg' in format_name:
         preview_hint = 'ffmpeg'
 
@@ -1025,9 +1042,12 @@ def _parse_rate(value, default=25.0):
 def clamp_seek_time(video_path, time_sec):
     """Keep input seeks on a decodable frame.
 
-    HTML5 ``ended`` often sets ``currentTime`` to container duration, which can
-    sit past the last video packet PTS. Seeking there makes ffmpeg emit no frame
-    and fail the MJPEG encode with a misleading color-range error.
+    Preview ffmpeg uses ``-ss`` *before* ``-i``, which is relative to container
+    start — not absolute PTS. HTML5 ``ended`` often sets ``currentTime`` to
+    container duration, which can sit past the last video packet; seeking there
+    makes ffmpeg emit no frame and fail the MJPEG encode with a misleading
+    color-range error. Callers may also pass absolute PTS on high-start_time
+    broadcast files; rebase those before clamping.
     """
     try:
         t = max(0.0, float(time_sec))
@@ -1036,6 +1056,7 @@ def clamp_seek_time(video_path, time_sec):
 
     last_pts = None
     duration = None
+    start_time = 0.0
     fps = 25.0
     try:
         _, json_path = analysis_json_paths(video_path)
@@ -1058,10 +1079,15 @@ def clamp_seek_time(video_path, time_sec):
                     if last_pts is None or pts > last_pts:
                         last_pts = pts
                     break
+            fmt = data.get('format') or {}
             try:
-                duration = float((data.get('format') or {}).get('duration'))
+                duration = float(fmt.get('duration'))
             except (TypeError, ValueError):
                 duration = None
+            try:
+                start_time = float(fmt.get('start_time') or 0)
+            except (TypeError, ValueError):
+                start_time = 0.0
             for stream in data.get('streams') or []:
                 if stream.get('codec_type') != 'video':
                     continue
@@ -1069,12 +1095,29 @@ def clamp_seek_time(video_path, time_sec):
                     stream.get('avg_frame_rate') or stream.get('r_frame_rate'),
                     default=fps,
                 )
+                try:
+                    st = float(stream.get('start_time'))
+                    if st > 0:
+                        start_time = st
+                except (TypeError, ValueError):
+                    pass
                 break
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         pass
 
+    # Absolute PTS (common on live-TS) → start-relative for ffmpeg -ss
+    if (
+        start_time > 1.0
+        and duration is not None
+        and duration > 0
+        and t >= start_time - 1.0
+        and t > duration + 1.0
+    ):
+        t = max(0.0, t - start_time)
+
     if last_pts is not None and last_pts >= 0:
-        return min(t, last_pts)
+        max_rel = max(0.0, last_pts - start_time) if start_time > 0 else last_pts
+        return min(t, max_rel)
     if duration is not None and duration > 0:
         frame_dur = 1.0 / fps if fps > 0 else 0.04
         return min(t, max(0.0, duration - frame_dur))

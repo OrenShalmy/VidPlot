@@ -240,10 +240,15 @@
       <section id="frameGraphSection">
         <div class="panel-graph-bar">
           <span class="panel-graph-title">Frame graph</span>
-          <button type="button" id="graphPanelToggle" class="panel-fold-btn" title="Fold frame graph" aria-expanded="true" aria-controls="frameChartWrap">
-            <span class="panel-fold-chevron" aria-hidden="true"></span>
-            <span class="panel-fold-label">Fold</span>
-          </button>
+          <div class="panel-graph-bar-actions">
+            <button type="button" id="timelineRebaseBtn" class="timeline-rebase-btn" hidden aria-pressed="false" title="Shift the frame graph so the first presentation timestamp is 0">
+              Rebase timeline
+            </button>
+            <button type="button" id="graphPanelToggle" class="panel-fold-btn" title="Fold frame graph" aria-expanded="true" aria-controls="frameChartWrap">
+              <span class="panel-fold-chevron" aria-hidden="true"></span>
+              <span class="panel-fold-label">Fold</span>
+            </button>
+          </div>
         </div>
         <div id="frameChartWrap">
           <div id="frameTypeLegend" class="frame-type-legend" aria-label="Frame type color index">

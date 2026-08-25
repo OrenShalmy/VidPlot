@@ -31,6 +31,34 @@ function estimateJsonFps(jsonData) {
     return 25;
 }
 
+/** First presentation timestamp / container start — used to detect live-TS style offsets. */
+function detectTimelineOrigin(jsonData) {
+    const frames = jsonData?.frames || [];
+    for (let i = 0; i < frames.length; i += 1) {
+        const t = parseFloat(frames[i].best_effort_timestamp_time);
+        if (Number.isFinite(t)) return t;
+    }
+    const video = (jsonData?.streams || []).find((s) => s.codec_type === 'video') || {};
+    const st = parseFloat(video.start_time ?? jsonData?.format?.start_time);
+    return Number.isFinite(st) ? st : 0;
+}
+
+function detectStreamStartTime(jsonData) {
+    const video = (jsonData?.streams || []).find((s) => s.codec_type === 'video') || {};
+    const st = parseFloat(video.start_time ?? jsonData?.format?.start_time);
+    return Number.isFinite(st) ? st : 0;
+}
+
+function formatTimelineOffsetLabel(seconds) {
+    const n = Number(seconds);
+    if (!Number.isFinite(n)) return '—';
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '−' : '+';
+    if (abs >= 1000) return `${sign}${abs.toFixed(2)} s`;
+    if (abs >= 10) return `${sign}${abs.toFixed(3)} s`;
+    return `${sign}${abs.toFixed(4)} s`;
+}
+
 function formatSecondsLabel(value) {
     const n = parseFloat(value);
     return Number.isFinite(n) ? `${n.toFixed(4)} s` : '—';
@@ -176,7 +204,9 @@ function ensureVidplotFocusGuards(transport) {
 
 function setupPlotlyChart(jsonData) {
     window.vidplotJsonData = jsonData;
+    const rebaseBtn = document.getElementById('timelineRebaseBtn');
     if (!jsonData?.frames?.length) {
+        if (rebaseBtn) rebaseBtn.hidden = true;
         const chart = document.getElementById('frameChart');
         if (chart) {
             chart.innerHTML = '<div class="chart-placeholder">No frame data</div>';
@@ -236,14 +266,16 @@ function setupPlotlyChart(jsonData) {
 
     function syncPlayheadView(currentTime, force) {
         if (!layout) return;
-        const closestFrame = findClosestFrame(currentTime, jsonData.frames);
-        const snappedTime = closestFrame
+        const ptsProbe = mediaTimeToFramePts(currentTime);
+        const closestFrame = findClosestFrame(ptsProbe, jsonData.frames);
+        const snappedPts = closestFrame
             ? parseFloat(closestFrame.best_effort_timestamp_time)
-            : currentTime;
+            : ptsProbe;
+        const snappedTime = framePtsToChartX(snappedPts);
         const updateShapes = buildPlayheadShapes(snappedTime);
         layout.shapes = updateShapes;
 
-        const range = layout.xaxis.range || [0, duration];
+        const range = layout.xaxis.range || [chartAxisMin(), chartAxisMax()];
         const visible = Math.max(range[1] - range[0], frameDuration);
         const followPayload = { shapes: updateShapes };
 
@@ -429,9 +461,10 @@ function setupPlotlyChart(jsonData) {
         } else {
             const t = Number(videoPlayer.currentTime);
             if (!Number.isFinite(t)) return;
+            const ptsNow = mediaTimeToFramePts(t);
             const currentIdx = lock
-                ? findIdxByPts(ptsA, t)
-                : findFrameIndexByTime(t, frames);
+                ? findIdxByPts(ptsA, ptsNow)
+                : findFrameIndexByTime(ptsNow, frames);
             const closestTime = lock
                 ? ptsA[currentIdx]
                 : parseFloat(frames[currentIdx].best_effort_timestamp_time);
@@ -442,20 +475,21 @@ function setupPlotlyChart(jsonData) {
                     currentIdx,
                 );
             // If playhead is past the closest frame, forward should advance; if before, backward should retreat
-            if (delta > 0 && t > closestTime + iv * 0.05) {
+            if (delta > 0 && ptsNow > closestTime + iv * 0.05) {
                 targetIdx = currentIdx + 1;
-            } else if (delta < 0 && t < closestTime - iv * 0.05) {
+            } else if (delta < 0 && ptsNow < closestTime - iv * 0.05) {
                 targetIdx = currentIdx - 1;
             } else {
                 targetIdx = currentIdx + delta;
             }
         }
         targetIdx = Math.max(0, Math.min(count - 1, targetIdx));
-        const targetTime = lock
+        const targetPts = lock
             ? ptsA[targetIdx]
             : parseFloat(frames[targetIdx].best_effort_timestamp_time);
-        if (!Number.isFinite(targetTime)) return;
-        seekToTime(targetTime, true, lock ? targetIdx : undefined);
+        if (!Number.isFinite(targetPts)) return;
+        const seekMedia = lock ? targetPts : framePtsToMediaTime(targetPts);
+        seekToTime(seekMedia, true, lock ? targetIdx : undefined);
     }
 
     // --- Variable Setup ---
@@ -486,6 +520,47 @@ function setupPlotlyChart(jsonData) {
             || !!(media() && media()._vidplotMode === 'ffmpeg');
     }
     const duration = parseFloat(jsonData.format.duration);
+    const timelineOrigin = detectTimelineOrigin(jsonData);
+    const streamStartTime = detectStreamStartTime(jsonData);
+    // Show rebase when the container reports a non-zero start, or frames sit off zero.
+    const timelineOffsetVisible = streamStartTime > 0 || timelineOrigin > 0.05;
+    let timelineRebased = false;
+
+    function mediaUsesAbsolutePts() {
+        // Native Chromium keeps absolute PTS when start_time != 0; ffmpeg→canvas is 0-based.
+        return !isFfmpegPreview();
+    }
+    function mediaTimeToFramePts(mediaT) {
+        const t = Number(mediaT);
+        if (!Number.isFinite(t)) return t;
+        return mediaUsesAbsolutePts() ? t : t + timelineOrigin;
+    }
+    function framePtsToMediaTime(pts) {
+        const t = Number(pts);
+        if (!Number.isFinite(t)) return t;
+        return mediaUsesAbsolutePts() ? t : t - timelineOrigin;
+    }
+    function framePtsToChartX(pts) {
+        const t = Number(pts);
+        if (!Number.isFinite(t)) return t;
+        return timelineRebased ? t - timelineOrigin : t;
+    }
+    function chartXToFramePts(x) {
+        const t = Number(x);
+        if (!Number.isFinite(t)) return t;
+        return timelineRebased ? t + timelineOrigin : t;
+    }
+    function chartAxisMin() {
+        return timelineRebased ? 0 : timelineOrigin;
+    }
+    function chartAxisMax() {
+        const span = Number.isFinite(duration) && duration > 0 ? duration : 0;
+        return chartAxisMin() + span;
+    }
+    function frameChartXs() {
+        return jsonData.frames.map((f) => framePtsToChartX(parseFloat(f.best_effort_timestamp_time)));
+    }
+
     const allFrames = jsonData.frames.map(f => ({
         ...f,
         timestamp: parseFloat(f.best_effort_timestamp_time),
@@ -499,6 +574,63 @@ function setupPlotlyChart(jsonData) {
     const bitRate = primaryVideo.bit_rate;
     const mbps = bitRate ? bitRate / (1024 * 1000) : 0;
     const maxZoom = Math.max(2, Math.min(200, Math.ceil(duration / Math.max(frameDuration * 4, 0.05))));
+
+    function updateRebaseButton() {
+        if (!rebaseBtn) return;
+        if (!timelineOffsetVisible) {
+            rebaseBtn.hidden = true;
+            return;
+        }
+        rebaseBtn.hidden = false;
+        const offsetLabel = formatTimelineOffsetLabel(timelineOrigin);
+        if (timelineRebased) {
+            rebaseBtn.classList.add('is-active');
+            rebaseBtn.setAttribute('aria-pressed', 'true');
+            rebaseBtn.textContent = `Rebased to 0 · was ${offsetLabel}`;
+            rebaseBtn.title = 'Restore absolute presentation timestamps on the frame graph';
+        } else {
+            rebaseBtn.classList.remove('is-active');
+            rebaseBtn.setAttribute('aria-pressed', 'false');
+            rebaseBtn.textContent = `Rebase timeline · first PTS ${offsetLabel}`;
+            rebaseBtn.title = 'Shift the frame graph so the first presentation timestamp is 0';
+        }
+    }
+
+    function applyTimelineMode({ preserveZoom = false } = {}) {
+        const chartDiv = document.getElementById('frameChart');
+        updateRebaseButton();
+        if (!chartDiv || typeof Plotly === 'undefined' || !chartDiv.data) return;
+        const range = [chartAxisMin(), chartAxisMax()];
+        if (layout) {
+            layout.xaxis.range = range;
+            layout.xaxis.autorange = false;
+        }
+        currentZoomLevel = 1;
+        Plotly.restyle(chartDiv, { x: [frameChartXs()] }, [0]).then(() => {
+            return Plotly.relayout(chartDiv, {
+                'xaxis.range': range,
+                'xaxis.autorange': false,
+            });
+        }).then(() => {
+            syncPlayheadView(videoPlayer.currentTime, true);
+        }).catch(() => {});
+    }
+
+    updateRebaseButton();
+    if (rebaseBtn && !rebaseBtn._vidplotRebaseBound) {
+        rebaseBtn._vidplotRebaseBound = true;
+        rebaseBtn.addEventListener('click', () => {
+            // Handler uses latest setupPlotlyChart closure via window hook
+            if (typeof window.vidplotToggleTimelineRebase === 'function') {
+                window.vidplotToggleTimelineRebase();
+            }
+        });
+    }
+    window.vidplotToggleTimelineRebase = () => {
+        if (!timelineOffsetVisible) return;
+        timelineRebased = !timelineRebased;
+        applyTimelineMode({ preserveZoom: true });
+    };
 
     // --- Playback Helpers (state on transport singleton) ---
     function stopReversePlayback() {
@@ -604,19 +736,22 @@ function setupPlotlyChart(jsonData) {
         if (layout.xaxis.range) {
             return (layout.xaxis.range[0] + layout.xaxis.range[1]) / 2;
         }
-        return videoPlayer.currentTime || duration / 2;
+        return framePtsToChartX(mediaTimeToFramePts(videoPlayer.currentTime))
+            || (chartAxisMin() + duration / 2);
     }
     function clampZoomRange(center, visibleDuration) {
+        const axisMin = chartAxisMin();
+        const axisMax = chartAxisMax();
         const half = visibleDuration / 2;
         let min = center - half;
         let max = center + half;
-        if (min < 0) {
-            min = 0;
-            max = Math.min(duration, visibleDuration);
+        if (min < axisMin) {
+            min = axisMin;
+            max = Math.min(axisMax, axisMin + visibleDuration);
         }
-        if (max > duration) {
-            max = duration;
-            min = Math.max(0, duration - visibleDuration);
+        if (max > axisMax) {
+            max = axisMax;
+            min = Math.max(axisMin, axisMax - visibleDuration);
         }
         return [min, max];
     }
@@ -624,7 +759,7 @@ function setupPlotlyChart(jsonData) {
         const level = Math.max(1, Math.min(maxZoom, zoomLevel));
         let range;
         if (level <= 1) {
-            range = [0, duration];
+            range = [chartAxisMin(), chartAxisMax()];
         } else {
             const visibleDuration = duration / level;
             range = clampZoomRange(centerTime ?? getZoomCenter(), visibleDuration);
@@ -657,7 +792,7 @@ function setupPlotlyChart(jsonData) {
         const fps = estimateJsonFps(jsonData);
         return [
             {
-                x: jsonData.frames.map(f => parseFloat(f.best_effort_timestamp_time)),
+                x: frameChartXs(),
                 y: jsonData.frames.map(f => bytesToMbps(parseInt(f.pkt_size), frameDuration)),
                 type: 'bar',
                 name: 'Frames',
@@ -760,7 +895,7 @@ function setupPlotlyChart(jsonData) {
             gridcolor: 'rgba(255,255,255,0.04)',
             zeroline: false,
             fixedrange: false,
-            range: [0, duration],
+            range: [chartAxisMin(), chartAxisMax()],
             autorange: false
         },
         yaxis: {
@@ -814,10 +949,13 @@ function setupPlotlyChart(jsonData) {
         const now = performance.now();
         if (now - lastChartSeekMs < 40) return;
         lastChartSeekMs = now;
-        const t = Math.max(0, Math.min(duration, Number(clickedTime)));
-        if (!Number.isFinite(t)) return;
+        const pts = chartXToFramePts(clickedTime);
+        const t = framePtsToMediaTime(pts);
+        const maxT = effectiveDuration();
+        const mediaT = Math.max(0, Math.min(maxT === Infinity ? t : maxT, t));
+        if (!Number.isFinite(mediaT)) return;
         if (transport.shuttleRate < 0) pausePlayback();
-        seekToTime(t, true);
+        seekToTime(mediaT, true);
     }
 
     // --- Plotly Chart Init ---
@@ -871,7 +1009,7 @@ function setupPlotlyChart(jsonData) {
             } else if (Array.isArray(eventData['xaxis.range'])) {
                 range = eventData['xaxis.range'];
             } else if (eventData['xaxis.autorange']) {
-                range = [0, duration];
+                range = [chartAxisMin(), chartAxisMax()];
             }
             if (!range) return;
             layout.xaxis.range = range;
