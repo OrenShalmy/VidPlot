@@ -339,6 +339,12 @@
         <p id="configStatus" class="config-status" aria-live="polite"></p>
       </div>
 
+      <div class="update-section">
+        <button type="button" id="checkUpdateBtn" class="side-menu-action config-save">Check for update</button>
+        <p id="updateStatus" class="config-status" aria-live="polite"></p>
+        <p id="appVersionHint" class="config-hint"></p>
+      </div>
+
       <div class="shortcuts-guide">
         <h4>Shortcuts</h4>
         <ul>
@@ -361,6 +367,7 @@
 </aside>
 
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
+<script src="{{ url_for('static', filename='js/update.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mediainfo.js') }}"></script>
 </body>
 </html>

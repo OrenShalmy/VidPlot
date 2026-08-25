@@ -1591,6 +1591,16 @@ body:has(#sideMenu.visible) #workspace {
   border-top: 1px solid var(--border);
 }
 
+.update-section {
+  margin: 0 0 28px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.update-section .config-hint {
+  margin-top: 8px;
+}
+
 .config-section h4,
 .shortcuts-guide h4 {
   margin: 16px 0 12px;

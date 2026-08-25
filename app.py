@@ -1287,9 +1287,17 @@ def index():
 
 @app.route('/api/env')
 def api_env():
+    version = '0.0.0'
+    try:
+        pkg_path = os.path.join(ROOT, 'package.json')
+        with open(pkg_path, 'r', encoding='utf-8') as handle:
+            version = str(json.load(handle).get('version') or version)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
     return jsonify({
         'desktop': bool(app.config.get('DESKTOP_MODE')),
         'frozen': is_frozen(),
+        'version': version,
     })
 
 

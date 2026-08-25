@@ -1,9 +1,10 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const net = require('net');
 const path = require('path');
+const { checkForUpdate, RELEASES_PAGE } = require('./check-update');
 
 // Portable Linux builds cannot ship a root-owned setuid chrome-sandbox.
 // Always disable the SUID sandbox on Linux (zip + AppImage).
@@ -321,6 +322,59 @@ ipcMain.handle('vidplot:open-video', async () => {
 ipcMain.on('vidplot:renderer-ready', () => {
     rendererReady = true;
     flushOpenPath();
+});
+
+ipcMain.handle('vidplot:check-update', async () => {
+    return checkForUpdate(app.getVersion());
+});
+
+ipcMain.handle('vidplot:offer-update', async (_event, info) => {
+    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    if (!info || info.ok === false) {
+        await dialog.showMessageBox(parent, {
+            type: 'error',
+            title: 'VidPlot',
+            message: 'Update check failed',
+            detail: info?.error || 'Could not reach GitHub Releases.',
+            buttons: ['OK'],
+        });
+        return { action: 'error' };
+    }
+    if (!info.updateAvailable) {
+        await dialog.showMessageBox(parent, {
+            type: 'info',
+            title: 'VidPlot',
+            message: 'You are up to date',
+            detail: `VidPlot ${info.currentVersion} is the latest release on GitHub.`,
+            buttons: ['OK'],
+        });
+        return { action: 'none' };
+    }
+    const detailLines = [
+        `You have VidPlot ${info.currentVersion}.`,
+        `Latest release: ${info.latestTag || info.latestVersion}.`,
+    ];
+    if (info.downloadName) {
+        detailLines.push('', `Suggested download: ${info.downloadName}`);
+    }
+    const { response } = await dialog.showMessageBox(parent, {
+        type: 'info',
+        title: 'Update available',
+        message: `VidPlot ${info.latestVersion} is available`,
+        detail: detailLines.join('\n'),
+        buttons: ['Download', 'View releases', 'Later'],
+        defaultId: 0,
+        cancelId: 2,
+    });
+    if (response === 0 && info.downloadUrl) {
+        await shell.openExternal(info.downloadUrl);
+        return { action: 'download' };
+    }
+    if (response === 1) {
+        await shell.openExternal(info.releasesUrl || RELEASES_PAGE);
+        return { action: 'releases' };
+    }
+    return { action: 'later' };
 });
 
 // Cold-start argv (Windows / Linux / `electron . /path/to/file`)

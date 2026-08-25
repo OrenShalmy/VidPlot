@@ -1,8 +1,12 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const pkg = require('../package.json');
 
 contextBridge.exposeInMainWorld('vidplotDesktop', {
     isDesktop: true,
+    version: pkg.version,
     openVideo: () => ipcRenderer.invoke('vidplot:open-video'),
+    checkForUpdate: () => ipcRenderer.invoke('vidplot:check-update'),
+    offerUpdate: (info) => ipcRenderer.invoke('vidplot:offer-update', info),
     pathForFile: (file) => {
         if (!file || typeof webUtils.getPathForFile !== 'function') return '';
         try {
