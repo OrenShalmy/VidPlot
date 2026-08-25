@@ -9,7 +9,10 @@ from urllib.parse import urlparse, unquote
 from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect, Response
 from werkzeug.utils import secure_filename
 
-ALLOWED_EXTENSIONS = {'mp4', 'mov', 'h264', 'h265', 'ts', 'm4v', 'mkv', 'avi', 'yuv', 'raw', 'y4m'}
+ALLOWED_EXTENSIONS = {
+    'mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'm2ts', 'mts',
+    'webm', 'h264', 'h265', 'hevc', 'yuv', 'raw', 'y4m',
+}
 DEFAULT_CONFIG = {
     'ffprobe_path': '',
     'ffmpeg_path': '',

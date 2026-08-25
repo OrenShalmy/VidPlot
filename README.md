@@ -84,7 +84,15 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 
 Step-by-step UI walkthrough with screenshots: **[How to use](docs/how-to-use.md)**.
 
-Supported containers and elementary streams include MP4, MOV, MKV, TS, AVI, WebM, H.264/H.265, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
+### For closed reviewers
+
+- **FFmpeg is required.** Without `ffprobe`/`ffmpeg` on `PATH` (or configured in Options), analysis will not start.
+- **Paste only trusted http(s) URLs.** The app probes remote media with FFmpeg; treat untrusted links like running untrusted media tools.
+- **MacOS builds are not notarized.** If Gatekeeper blocks the app: Control-click → Open (or clear quarantine per release notes).
+- **Linux portable builds run Chromium without the SUID sandbox** (`--no-sandbox`) so zip/AppImage work without a root-owned helper. Prefer the AppImage for “Open with” / MIME associations.
+- Prefer sharing **local files** for review; URL open is for convenience demos.
+
+Supported containers and elementary streams include MP4, MOV, MKV, TS/M2TS, AVI, WebM, H.264/H.265/HEVC, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
 
 **Open with VidPlot:** after install, use **Open with → VidPlot** from Finder / Explorer / your file manager (or set VidPlot as the default app for a type in OS settings). On Windows use the **Setup** installer for associations; on Linux prefer the **AppImage**. MacOS zip of `.app` registers after the first launch.
 

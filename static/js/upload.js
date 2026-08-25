@@ -636,7 +636,11 @@ document.addEventListener("DOMContentLoaded", function () {
     function showFrameChartPlaceholder(message) {
         const chart = document.getElementById("frameChart");
         if (!chart) return;
-        chart.innerHTML = `<div class="chart-placeholder">${message || "Analyzing frames…"}</div>`;
+        chart.replaceChildren();
+        const el = document.createElement("div");
+        el.className = "chart-placeholder";
+        el.textContent = message || "Analyzing frames…";
+        chart.appendChild(el);
     }
 
     function requestQpAnalysis(path, generation, opts = {}) {

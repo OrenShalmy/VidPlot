@@ -26,22 +26,28 @@ Supported types include MP4, MOV, MKV, TS, AVI, WebM, elementary H.264/H.265, **
 
 ---
 
+
+
 ## 2. Main workspace
 
 After open, the layout settles into four zones:
 
-| Zone | What it is |
-|------|------------|
-| **Preview** | Picture (native `<video>`, or ffmpeg→canvas for hard codecs) |
-| **Scope toggles** | Analyzers under the preview |
-| **Frame graph + transport** | Per-frame size bars and play/seek |
-| **Tracks & properties** | Stream tree and detailed metadata |
+
+| Zone                        | What it is                                                   |
+| --------------------------- | ------------------------------------------------------------ |
+| **Preview**                 | Picture (native `<video>`, or ffmpeg→canvas for hard codecs) |
+| **Scope toggles**           | Analyzers under the preview                                  |
+| **Frame graph + transport** | Per-frame size bars and play/seek                            |
+| **Tracks & properties**     | Stream tree and detailed metadata                            |
+
 
 ![Main workspace after loading Big Buck Bunny](howto/howto-02-overview.png)
 
 While a clip is open you can still drop another file anywhere, or use the **Options** tray on the left edge.
 
 ---
+
+
 
 ## 3. Analysis progress
 
@@ -52,6 +58,8 @@ Watch the status near the seek bar. Long HEVC or broadcast files can take a whil
 ![Workspace while analysis is still settling](howto/howto-03-analysis-status.png)
 
 ---
+
+
 
 ## 4. Tracks & properties
 
@@ -64,6 +72,8 @@ Drag the vertical splitter to resize the rail; use **Fold** (or `]`) to collapse
 ![Tracks tree and properties rail](howto/howto-04-tracks-properties.png)
 
 ---
+
+
 
 ## 5. Frame graph
 
@@ -78,6 +88,8 @@ Bars are **size in Mb/s**, colored **I / P / B**. The playhead stays synced with
 
 ---
 
+
+
 ## 6. Transport & time display
 
 Under the graph:
@@ -90,28 +102,34 @@ Under the graph:
 
 ### Keyboard (when not typing in a field)
 
-| Keys | Action |
-|------|--------|
-| **J / K / L** | Shuttle back / pause / shuttle forward |
-| **Space** | Play / pause |
-| **,** / **.** (or **&lt;** / **&gt;**) | Step one frame |
-| **←** / **→** | Seek ±1 s |
+
+| Keys                             | Action                                 |
+| -------------------------------- | -------------------------------------- |
+| **J / K / L**                    | Shuttle back / pause / shuttle forward |
+| **Space**                        | Play / pause                           |
+| **,** / **.** (or **<** / **>**) | Step one frame                         |
+| **←** / **→**                    | Seek ±1 s                              |
+
 
 ---
+
+
 
 ## 7. Scopes (analyzers)
 
 Under the preview, toggle:
 
-| Scope | Use it for |
-|-------|------------|
-| Oscilloscope | Level trace along a line |
-| Waveform | Luma vs column (exposure, crush, clip) |
-| RGB parade | Channel balance |
-| Histogram | R/G/B level distribution |
-| Vectorscope | Chroma (U vs V), saturation |
-| Motion vectors | codecview MVs (codec-dependent) |
-| QP map | Per-macroblock QP tint + grid (H.264/VP9, etc.) |
+
+| Scope          | Use it for                                      |
+| -------------- | ----------------------------------------------- |
+| Oscilloscope   | Level trace along a line                        |
+| Waveform       | Luma vs column (exposure, crush, clip)          |
+| RGB parade     | Channel balance                                 |
+| Histogram      | R/G/B level distribution                        |
+| Vectorscope    | Chroma (U vs V), saturation                     |
+| Motion vectors | codecview MVs (codec-dependent)                 |
+| QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.) |
+
 
 **Overlays** shows or hides the live PiP of the picture and the axis legend on top of scopes.
 
@@ -122,6 +140,8 @@ Scopes update for the **current frame**. Hard codecs (for example ProRes) use th
 ![QP map overlay on the preview](howto/howto-07-qpmap.png)
 
 ---
+
+
 
 ## 8. Options tray
 
@@ -136,6 +156,8 @@ Open **Options** from the left-edge tab.
 
 ---
 
+
+
 ## 9. Load another file (replace vs compare)
 
 With a clip already open, drop or pick a second file. VidPlot asks:
@@ -147,18 +169,24 @@ With a clip already open, drop or pick a second file. VidPlot asks:
 
 ---
 
+
+
 ## 10. Raw / uncompressed open
 
-| Extension | Behavior |
-|-----------|----------|
-| **`.y4m`** | Size, rate, and pixel format from the header (no prompt) |
-| **`.yuv` / `.raw`** | Dialog for pixel format, frame rate, and width × height |
+
+| Extension           | Behavior                                                 |
+| ------------------- | -------------------------------------------------------- |
+| `.y4m`              | Size, rate, and pixel format from the header (no prompt) |
+| `.yuv` **/** `.raw` | Dialog for pixel format, frame rate, and width × height  |
+
 
 Presets are offered; custom values work. Last-used params are remembered. Preview always uses ffmpeg→canvas. Raw graph bars are usually flat (fixed frame bytes); QP / motion-vector scopes usually do not apply.
 
 ![Raw video parameters dialog](howto/howto-10-raw-params.png)
 
 ---
+
+
 
 ## 11. Wipe compare
 
@@ -174,6 +202,8 @@ Enter compare via the load dialog or **Compare with another video** in Options.
 ![Wipe compare of 720p vs 360p Big Buck Bunny](howto/howto-11-compare-wipe.png)
 
 ---
+
+
 
 ## 12. B frame offset (compare lock)
 
@@ -191,18 +221,24 @@ Useful for source vs super-resolution (or any pipeline delay) without bouncing b
 
 ---
 
+
+
 ## 13. Layout
 
-| Key | Action |
-|-----|--------|
+
+| Key   | Action                            |
+| ----- | --------------------------------- |
 | **]** | Fold / expand Tracks & properties |
-| **g** | Fold / expand Frame graph |
+| **g** | Fold / expand Frame graph         |
+
 
 Drag the horizontal splitter between preview and graph, and the vertical splitter beside the properties rail.
 
 ![Frame graph folded to give the preview more room](howto/howto-13-layout.png)
 
 ---
+
+
 
 ## Quick recipe
 
@@ -217,12 +253,3 @@ That is the loop VidPlot was built for: one window, full picture.
 
 ---
 
-## Regenerating screenshots
-
-With the desktop app (or `serve_desktop.py`) running locally:
-
-```bash
-VIDPLOT_URL=http://127.0.0.1:<port> ./venv/bin/python docs/howto/_capture.py
-```
-
-Requires Playwright (`pip install playwright && playwright install chromium`).
