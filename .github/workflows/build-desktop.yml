@@ -18,6 +18,9 @@ on:
 permissions:
   contents: write
 
+# Publishing skips Actions artifacts (private repos often hit storage quota)
+# and attaches each matrix build directly to the GitHub Release.
+
 jobs:
   build:
     strategy:
@@ -145,23 +148,49 @@ jobs:
           fi
           ls -lah staged
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: staged/*
-          if-no-files-found: error
+      - name: Resolve release tag
+        id: tag
+        if: >-
+          startsWith(github.ref, 'refs/tags/v') ||
+          (github.event_name == 'workflow_dispatch' &&
+           inputs.create_release &&
+           inputs.version != '')
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
 
-  release:
-    name: Publish release assets
+      - name: Attach assets to GitHub Release
+        if: >-
+          startsWith(github.ref, 'refs/tags/v') ||
+          (github.event_name == 'workflow_dispatch' &&
+           inputs.create_release &&
+           inputs.version != '')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: VidPlot ${{ steps.tag.outputs.name }}
+          files: staged/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notes only — assets already attached by each matrix job (no artifact storage).
+  release-notes:
+    name: Finalize release notes
     needs: build
     if: >-
-      startsWith(github.ref, 'refs/tags/v') ||
-      (github.event_name == 'workflow_dispatch' &&
-       inputs.create_release &&
-       inputs.version != '')
+      always() &&
+      !cancelled() &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+       (github.event_name == 'workflow_dispatch' &&
+        inputs.create_release &&
+        inputs.version != '')) &&
+      (needs.build.result == 'success' || needs.build.result == 'failure')
     runs-on: ubuntu-latest
-
     steps:
       - name: Resolve tag
         id: tag
@@ -172,17 +201,7 @@ jobs:
             echo "name=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          pattern: VidPlot-*
-          merge-multiple: true
-
-      - name: List assets
-        run: ls -lah artifacts
-
-      - name: Create or update GitHub Release
+      - name: Update GitHub Release notes
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
@@ -214,16 +233,5 @@ jobs:
             ## Open with VidPlot
 
             After install, use **Open with → VidPlot** (or set as default in OS settings) for common video types.
-          files: |
-            artifacts/VidPlot-MacOS-arm64.zip
-            artifacts/VidPlot-Windows-x64.zip
-            artifacts/VidPlot-Windows-x64-Setup.exe
-            artifacts/VidPlot-Windows-arm64.zip
-            artifacts/VidPlot-Windows-arm64-Setup.exe
-            artifacts/VidPlot-Linux-x64.zip
-            artifacts/VidPlot-Linux-x64.AppImage
-            artifacts/VidPlot-Linux-arm64.zip
-            artifacts/VidPlot-Linux-arm64.AppImage
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
