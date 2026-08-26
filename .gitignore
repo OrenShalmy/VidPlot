@@ -13,3 +13,5 @@ __pycache__/
 venv/
 node_modules/
 .history/
+# Local-only: GitHub release → S3 sync (uses your AWS creds; do not commit)
+scripts/sync-release-to-s3.sh
