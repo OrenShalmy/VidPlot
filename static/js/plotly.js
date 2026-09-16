@@ -218,6 +218,45 @@ function setupPlotlyChart(jsonData) {
     function bytesToMbps(bytes, duration) {
         return (bytes * 8) / (1024 * 1024 * duration);
     }
+    function estimateFrameDurationFromJson(data) {
+        const frames = data?.frames || [];
+        if (frames.length < 2) return 1 / 30;
+        const t0 = parseFloat(frames[0].best_effort_timestamp_time);
+        const t1 = parseFloat(frames[1].best_effort_timestamp_time);
+        if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) return t1 - t0;
+        return 1 / 30;
+    }
+    function maxFrameSizeMbps(data) {
+        const frames = data?.frames || [];
+        if (!frames.length) return 0;
+        const fd = estimateFrameDurationFromJson(data);
+        let peak = 0;
+        for (let i = 0; i < frames.length; i += 1) {
+            const y = bytesToMbps(parseInt(frames[i].pkt_size, 10) || 0, fd);
+            if (Number.isFinite(y) && y > peak) peak = y;
+        }
+        return peak;
+    }
+    /** Shared Y ceiling so A/B compare charts use the same Frame size scale. */
+    function compareSharedYMax(data, guideMbps) {
+        if (!(window.vidplotCompare && window.vidplotCompare.enabled)) return null;
+        const slotJson = (slot) => {
+            try {
+                return window.vidplotGetCompareSlot?.(slot)?.jsonData || null;
+            } catch (_) {
+                return null;
+            }
+        };
+        const peaks = [
+            maxFrameSizeMbps(data),
+            maxFrameSizeMbps(slotJson('A')),
+            maxFrameSizeMbps(slotJson('B')),
+            Number(guideMbps) || 0,
+        ];
+        const peak = Math.max(0, ...peaks);
+        if (!(peak > 0)) return null;
+        return peak * 1.08;
+    }
     function findClosestFrame(time, frames) {
         let closestFrame = null;
         let minDiff = Infinity;
@@ -887,6 +926,7 @@ function setupPlotlyChart(jsonData) {
     window.vidplotResizeFrameChart = resizeFrameChart;
 
     let traces = createTraces();
+    const sharedYMax = compareSharedYMax(jsonData, mbps);
     layout = {
         title: '',
         xaxis: {
@@ -903,7 +943,10 @@ function setupPlotlyChart(jsonData) {
             color: '#8b93a7',
             gridcolor: 'rgba(255,255,255,0.06)',
             zeroline: false,
-            fixedrange: true
+            fixedrange: true,
+            ...(sharedYMax
+                ? { range: [0, sharedYMax], autorange: false }
+                : { autorange: true }),
         },
         plot_bgcolor: '#181c24',
         paper_bgcolor: '#181c24',

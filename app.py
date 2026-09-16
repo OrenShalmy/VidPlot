@@ -5,6 +5,8 @@ import hashlib
 import shutil
 import subprocess
 import json
+import tempfile
+from functools import lru_cache
 from urllib.parse import urlparse, unquote
 from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect, Response
 from werkzeug.utils import secure_filename
@@ -57,6 +59,181 @@ def primary_video_pix_fmt(json_data):
         if stream.get('codec_type') == 'video':
             return (stream.get('pix_fmt') or '').lower()
     return ''
+
+
+def primary_video_stream(json_data):
+    for stream in json_data.get('streams') or []:
+        if stream.get('codec_type') == 'video':
+            return stream
+    return None
+
+
+# ffprobe / FFmpeg tokens that mean "not signaled"
+_COLOR_UNSPECIFIED = frozenset({
+    '', 'unknown', 'unspecified', 'reserved', 'n/a', 'na', 'none', 'und',
+})
+
+# Map common aliases to colorspace filter / ffprobe-style names
+_COLOR_SPACE_ALIASES = {
+    'bt709': 'bt709',
+    'bt.709': 'bt709',
+    'itu-r_bt.709': 'bt709',
+    'smpte170m': 'smpte170m',
+    'bt601': 'bt470bg',
+    'bt470bg': 'bt470bg',
+    'bt470m': 'bt470m',
+    'bt2020': 'bt2020nc',
+    'bt2020nc': 'bt2020nc',
+    'bt2020c': 'bt2020c',
+    'fcc': 'fcc',
+    'smpte240m': 'smpte240m',
+    'ycgco': 'ycgco',
+}
+_COLOR_PRIMARIES_ALIASES = {
+    'bt709': 'bt709',
+    'bt.709': 'bt709',
+    'bt470m': 'bt470m',
+    'bt470bg': 'bt470bg',
+    'smpte170m': 'smpte170m',
+    'smpte240m': 'smpte240m',
+    'film': 'film',
+    'bt2020': 'bt2020',
+    'smpte428': 'smpte428',
+    'smpte431': 'smpte431',
+    'smpte432': 'smpte432',
+    'jedec-p22': 'jedec-p22',
+}
+_COLOR_TRANSFER_ALIASES = {
+    'bt709': 'bt709',
+    'bt.709': 'bt709',
+    'gamma22': 'bt470m',
+    'gamma28': 'bt470bg',
+    'smpte170m': 'smpte170m',
+    'smpte240m': 'smpte240m',
+    'linear': 'linear',
+    'log': 'log',
+    'log100': 'log',
+    'log316': 'log_sqrt',
+    'iec61966-2-4': 'iec61966-2-4',
+    'bt1361e': 'bt1361e',
+    'iec61966-2-1': 'iec61966-2-1',
+    'bt2020-10': 'bt2020-10',
+    'bt2020-12': 'bt2020-12',
+    'smpte2084': 'smpte2084',
+    'pq': 'smpte2084',
+    'smpte428': 'smpte428',
+    'arib-std-b67': 'arib-std-b67',
+    'hlg': 'arib-std-b67',
+}
+_HDR_TRANSFERS = frozenset({'smpte2084', 'arib-std-b67'})
+
+
+def normalize_color_token(value, aliases=None):
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in _COLOR_UNSPECIFIED:
+        return None
+    if aliases and text in aliases:
+        return aliases[text]
+    return text.replace(' ', '_')
+
+
+def normalize_color_range(value, pix_fmt=None):
+    token = normalize_color_token(value)
+    if token in ('tv', 'mpeg', 'limited'):
+        return 'tv'
+    if token in ('pc', 'jpeg', 'full'):
+        return 'pc'
+    fmt = (pix_fmt or '').lower()
+    # FFmpeg "jpeg-range" YUV family is full range
+    if fmt.startswith('yuvj'):
+        return 'pc'
+    return None
+
+
+def infer_bits_per_raw_sample(stream):
+    raw = stream.get('bits_per_raw_sample')
+    try:
+        if raw is not None and str(raw).strip() and str(raw).upper() != 'N/A':
+            return int(raw)
+    except (TypeError, ValueError):
+        pass
+    return pix_fmt_bit_depth(stream.get('pix_fmt'))
+
+
+def enrich_video_stream_color(stream):
+    """Normalize / fill color fields on a video stream for UI + preview."""
+    if not stream or stream.get('codec_type') != 'video':
+        return stream
+
+    pix_fmt = (stream.get('pix_fmt') or '').lower() or None
+    raw_space = stream.get('color_space')
+    raw_primaries = stream.get('color_primaries')
+    raw_transfer = stream.get('color_transfer') or stream.get('color_trc')
+    raw_range = stream.get('color_range')
+
+    space = normalize_color_token(raw_space, _COLOR_SPACE_ALIASES)
+    primaries = normalize_color_token(raw_primaries, _COLOR_PRIMARIES_ALIASES)
+    transfer = normalize_color_token(raw_transfer, _COLOR_TRANSFER_ALIASES)
+    color_range = normalize_color_range(raw_range, pix_fmt)
+    chroma = normalize_color_token(stream.get('chroma_location'))
+    bits = infer_bits_per_raw_sample(stream)
+
+    signaled = {
+        'space': normalize_color_token(raw_space) is not None,
+        'primaries': normalize_color_token(raw_primaries) is not None,
+        'transfer': normalize_color_token(raw_transfer) is not None,
+        'range': normalize_color_range(raw_range, pix_fmt) is not None,
+    }
+
+    # Broadcast HD progressive without tags is almost always BT.709
+    width = stream.get('width')
+    try:
+        width_i = int(width) if width is not None else 0
+    except (TypeError, ValueError):
+        width_i = 0
+    inferred_bt709 = False
+    if width_i >= 1280 and not space and not primaries and not transfer:
+        space = primaries = transfer = 'bt709'
+        inferred_bt709 = True
+
+    if space:
+        stream['color_space'] = space
+    if primaries:
+        stream['color_primaries'] = primaries
+    if transfer:
+        stream['color_transfer'] = transfer
+    if color_range:
+        stream['color_range'] = color_range
+    if chroma:
+        stream['chroma_location'] = chroma
+    stream['bits_per_raw_sample'] = bits
+
+    # Compact summary used by the preview encoder (display ≈ sRGB / BT.709)
+    stream['vidplot_color'] = {
+        'pix_fmt': pix_fmt,
+        'space': space or 'bt709',
+        'primaries': primaries or space or 'bt709',
+        'transfer': transfer or 'bt709',
+        'range': color_range or 'tv',
+        'chroma_location': chroma,
+        'bits': bits,
+        'hdr': (transfer in _HDR_TRANSFERS) if transfer else False,
+        'inferred_bt709': inferred_bt709,
+        'signaled': signaled,
+    }
+    return stream
+
+
+def enrich_analysis_color(json_data):
+    """Normalize color metadata on every video stream after ffprobe."""
+    if not json_data:
+        return json_data
+    for stream in json_data.get('streams') or []:
+        if stream.get('codec_type') == 'video':
+            enrich_video_stream_color(stream)
+    return json_data
 
 
 def preview_hint_for_codec(codec, pix_fmt=None):
@@ -730,6 +907,7 @@ def analyze_video_file(video_path, input_opts=None):
         json_data['format']['vidplot_input'] = opts
 
     synthesize_raw_duration(video_path, opts, json_data)
+    enrich_analysis_color(json_data)
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
@@ -1124,8 +1302,133 @@ def clamp_seek_time(video_path, time_sec):
     return t
 
 
-def render_preview_jpeg(video_path, time_sec, max_width=1920, input_opts=None):
-    """Seek to time_sec and render one JPEG frame for canvas preview."""
+def load_analysis_json(video_path):
+    try:
+        _, json_path = analysis_json_paths(video_path)
+    except Exception:
+        return None
+    if not os.path.isfile(json_path):
+        return None
+    try:
+        with open(json_path, 'r', encoding='utf-8') as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+_DEFAULT_PREVIEW_COLOR = {
+    'pix_fmt': None,
+    'space': 'bt709',
+    'primaries': 'bt709',
+    'transfer': 'bt709',
+    'range': 'tv',
+    'chroma_location': None,
+    'bits': 8,
+    'hdr': False,
+    'inferred_bt709': False,
+    'signaled': {},
+}
+
+
+def video_color_for_path(video_path):
+    """Return enriched color summary for preview from saved analysis JSON."""
+    data = load_analysis_json(video_path)
+    if not data:
+        return dict(_DEFAULT_PREVIEW_COLOR)
+    stream = primary_video_stream(data)
+    if not stream:
+        return dict(_DEFAULT_PREVIEW_COLOR)
+    if not stream.get('vidplot_color'):
+        enrich_video_stream_color(stream)
+    return dict(stream.get('vidplot_color') or _DEFAULT_PREVIEW_COLOR)
+
+
+def build_preview_vf(max_width, color, for_rgb=True):
+    """Scale + color-managed conversion for canvas-oriented preview stills.
+
+    Browser canvas / createImageBitmap treats images as sRGB-ish, so we convert
+    source YUV (matrix / primaries / transfer / range) into BT.709 full-range
+    RGB (or 4:2:0 for AVIF) before encoding.
+    """
+    color = color or {}
+    space = color.get('space') or 'bt709'
+    primaries = color.get('primaries') or space or 'bt709'
+    transfer = color.get('transfer') or 'bt709'
+    irange = color.get('range') or 'tv'
+    width = max(160, min(3840, int(max_width or 1920)))
+
+    parts = [f'scale=min({width}\\,iw):-2']
+    if color.get('hdr') and transfer in _HDR_TRANSFERS:
+        parts.append('tonemap=tonemap=hable:desat=0')
+        transfer = 'bt709'
+
+    parts.append(
+        'colorspace='
+        f'ispace={space}:space=bt709:'
+        f'iprimaries={primaries}:primaries=bt709:'
+        f'itrc={transfer}:trc=bt709:'
+        f'irange={irange}:range=pc'
+    )
+    parts.append('format=rgb24' if for_rgb else 'format=yuv420p')
+    return ','.join(parts)
+
+
+@lru_cache(maxsize=8)
+def preview_encoder_caps(ffmpeg_bin):
+    """Probe which still-image encoders this ffmpeg build supports."""
+    caps = {
+        'webp': False,
+        'avif': False,
+        'png': True,
+        'jpeg': True,
+        'av1_encoder': None,
+    }
+    try:
+        proc = subprocess.run(
+            [ffmpeg_bin, '-hide_banner', '-encoders'],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            **_SUBPROCESS_NO_WINDOW,
+        )
+        text = (proc.stdout or '') + (proc.stderr or '')
+        caps['webp'] = bool(re.search(r'\blibwebp\b', text))
+        if re.search(r'\blibsvtav1\b', text):
+            caps['avif'] = True
+            caps['av1_encoder'] = 'libsvtav1'
+        elif re.search(r'\blibaom-av1\b', text):
+            caps['avif'] = True
+            caps['av1_encoder'] = 'libaom-av1'
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        pass
+    return caps
+
+
+def select_preview_format(requested, caps):
+    """Pick an encode format: auto prefers WebP → PNG → AVIF → JPEG."""
+    req = (requested or 'auto').strip().lower()
+    if req in ('jpg', 'mjpeg'):
+        req = 'jpeg'
+    if req in ('webp', 'avif', 'png', 'jpeg'):
+        if req == 'webp' and not caps.get('webp'):
+            return 'png' if caps.get('png') else 'jpeg'
+        if req == 'avif' and not caps.get('avif'):
+            return 'png' if caps.get('png') else 'jpeg'
+        return req
+    if caps.get('webp'):
+        return 'webp'
+    if caps.get('png'):
+        return 'png'
+    if caps.get('avif'):
+        return 'avif'
+    return 'jpeg'
+
+
+def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, fmt='auto'):
+    """Seek and render one color-managed still for canvas preview.
+
+    Returns (payload_bytes, mime_type, format_name).
+    """
     video_path = validate_video_path(video_path)
     opts = resolve_input_opts(video_path, input_opts)
     config = load_config()
@@ -1135,26 +1438,107 @@ def render_preview_jpeg(video_path, time_sec, max_width=1920, input_opts=None):
         width = max(160, min(3840, int(max_width or 1920)))
     except (TypeError, ValueError):
         width = 1920
+
+    color = video_color_for_path(video_path)
+    caps = preview_encoder_caps(ffmpeg_bin)
+    chosen = select_preview_format(fmt, caps)
+    tried = set()
+
+    while chosen not in tried:
+        tried.add(chosen)
+        for_rgb = chosen != 'avif'
+        vf = build_preview_vf(width, color, for_rgb=for_rgb)
+        try:
+            if chosen == 'avif':
+                payload = _encode_preview_avif(
+                    ffmpeg_bin, video_path, opts, t, vf, caps.get('av1_encoder') or 'libsvtav1'
+                )
+                return payload, 'image/avif', 'avif'
+            if chosen == 'webp':
+                payload = _encode_preview_pipe(
+                    ffmpeg_bin, video_path, opts, t, vf,
+                    ['-f', 'image2pipe', '-vcodec', 'libwebp',
+                     '-lossless', '1', '-compression_level', '4', 'pipe:1'],
+                )
+                return payload, 'image/webp', 'webp'
+            if chosen == 'png':
+                payload = _encode_preview_pipe(
+                    ffmpeg_bin, video_path, opts, t, vf,
+                    ['-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'],
+                )
+                return payload, 'image/png', 'png'
+            # jpeg
+            payload = _encode_preview_pipe(
+                ffmpeg_bin, video_path, opts, t, vf,
+                ['-f', 'image2pipe', '-vcodec', 'mjpeg', '-q:v', '2', 'pipe:1'],
+            )
+            return payload, 'image/jpeg', 'jpeg'
+        except ValueError:
+            if chosen == 'jpeg':
+                raise
+            # Fall through quality ladder
+            if chosen == 'webp':
+                chosen = 'png' if caps.get('png') else 'jpeg'
+            elif chosen == 'avif':
+                chosen = 'png' if caps.get('png') else 'jpeg'
+            elif chosen == 'png':
+                chosen = 'jpeg'
+            else:
+                raise
+    raise ValueError('Preview frame failed')
+
+
+def _encode_preview_pipe(ffmpeg_bin, video_path, opts, t, vf, tail_args):
     cmd = [
-        ffmpeg_bin,
-        '-hide_banner',
-        '-loglevel', 'error',
-        '-ss', f'{t:.3f}',
-        *ffmpeg_input_args(video_path, opts),
-        '-i', video_path,
-        '-an',
-        '-vf', f'scale=min({width}\\,iw):-2',
-        '-frames:v', '1',
-        '-f', 'image2pipe',
-        '-vcodec', 'mjpeg',
-        '-q:v', '3',
-        'pipe:1',
+        ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
+        '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
+        '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
+        *tail_args,
     ]
     proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
         raise ValueError(err or 'Preview frame failed')
     return proc.stdout
+
+
+def _encode_preview_avif(ffmpeg_bin, video_path, opts, t, vf, av1_encoder):
+    """AVIF muxer needs a seekable file — encode to a temp path then read."""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.avif', delete=False) as tmp:
+            tmp_path = tmp.name
+        cmd = [
+            ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
+            '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
+            '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
+            '-c:v', av1_encoder, '-crf', '18', '-preset', '10',
+            '-y', tmp_path,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
+        if (
+            proc.returncode != 0
+            or not os.path.isfile(tmp_path)
+            or os.path.getsize(tmp_path) == 0
+        ):
+            err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
+            raise ValueError(err or 'AVIF preview encode failed')
+        with open(tmp_path, 'rb') as handle:
+            return handle.read()
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
+def render_preview_jpeg(video_path, time_sec, max_width=1920, input_opts=None):
+    """Backward-compatible wrapper: color-managed still (auto format)."""
+    payload, _mime, _fmt = render_preview_frame(
+        video_path, time_sec, max_width=max_width, input_opts=input_opts, fmt='auto'
+    )
+    return payload
 
 
 def render_scope_jpeg(video_path, time_sec, filters, input_opts=None):
@@ -1413,15 +1797,19 @@ def analyze_qp_route():
 
 @app.route('/api/preview-frame', methods=['POST'])
 def preview_frame_route():
-    """Single JPEG frame at a timestamp for ffmpeg→canvas preview."""
+    """Single color-managed still (WebP/PNG/AVIF/JPEG) for ffmpeg→canvas preview."""
     data = request.get_json(silent=True) or {}
     path = data.get('path') or current_source_path
     time_sec = data.get('time', 0)
     width = data.get('width', 1920)
+    fmt = data.get('format') or 'auto'
     try:
-        jpeg = render_preview_jpeg(path, time_sec, max_width=width, input_opts=data.get('input'))
-        response = Response(jpeg, mimetype='image/jpeg')
+        payload, mime, used_fmt = render_preview_frame(
+            path, time_sec, max_width=width, input_opts=data.get('input'), fmt=fmt
+        )
+        response = Response(payload, mimetype=mime)
         response.headers['Cache-Control'] = 'no-store'
+        response.headers['X-VidPlot-Preview-Format'] = used_fmt
         return response
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 400

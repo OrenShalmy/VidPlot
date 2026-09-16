@@ -82,6 +82,22 @@ function updatemediaInfo(jsonData, opts) {
     return null;
   }
 
+  function formatColorRange(value) {
+    if (!value) return null;
+    const t = String(value).toLowerCase();
+    if (t === 'tv' || t === 'mpeg' || t === 'limited') return 'tv (limited)';
+    if (t === 'pc' || t === 'jpeg' || t === 'full') return 'pc (full)';
+    return String(value);
+  }
+
+  function formatColorSpace(stream) {
+    if (!stream) return null;
+    const space = stream.color_space;
+    if (!space) return null;
+    const inferred = stream.vidplot_color?.inferred_bt709;
+    return inferred ? `${space} (inferred)` : space;
+  }
+
   function formatReorderDelay(value) {
     if (value === undefined || value === null || value === '') return null;
     const n = Number(value);
@@ -244,14 +260,21 @@ function updatemediaInfo(jsonData, opts) {
       }));
   }
 
-  function row(label, value, { full = false } = {}) {
-    if (value === undefined || value === null || value === '' || Number.isNaN(value)) return '';
+  function row(label, value, { full = false, keep = false } = {}) {
+    const missing = value === undefined || value === null || value === '' || Number.isNaN(value);
+    if (missing && !keep) return '';
+    const display = missing ? '—' : value;
     return `
       <div class="info-item${full ? ' info-item-full' : ''}">
         <span class="label">${escapeHtml(label)}</span>
-        <span class="value" title="${escapeHtml(value)}">${escapeHtml(value)}</span>
+        <span class="value" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
       </div>
     `;
+  }
+
+  /** Fixed schema rows — always emit so A/B compare keeps label positions aligned. */
+  function rowKeep(label, value, opts = {}) {
+    return row(label, value, { ...opts, keep: true });
   }
 
   function renderFormatProperties() {
@@ -261,13 +284,13 @@ function updatemediaInfo(jsonData, opts) {
         <h3>Properties</h3>
         <div class="info-subtitle">Container</div>
         <div class="info-grid">
-          ${row(format.is_remote ? 'URL' : 'Path', displayPath, { full: true })}
-          ${row('Format', format.format_long_name || format.format_name, { full: true })}
-          ${row('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
-          ${row('Duration', formatDuration(format.duration))}
-          ${row('Bit rate', formatBitrate(format.bit_rate))}
-          ${row('Streams', String((jsonData.streams || []).length))}
-          ${row('Probe score', format.probe_score)}
+          ${rowKeep(format.is_remote ? 'URL' : 'Path', displayPath, { full: true })}
+          ${rowKeep('Format', format.format_long_name || format.format_name, { full: true })}
+          ${rowKeep('Size', format.file_size ? `${(format.file_size / (1024 * 1024)).toFixed(2)} MB` : null)}
+          ${rowKeep('Duration', formatDuration(format.duration))}
+          ${rowKeep('Bit rate', formatBitrate(format.bit_rate))}
+          ${rowKeep('Streams', String((jsonData.streams || []).length))}
+          ${rowKeep('Probe score', format.probe_score)}
         </div>
       </div>
     `;
@@ -292,35 +315,36 @@ function updatemediaInfo(jsonData, opts) {
     let typeRows = '';
     if (type === 'video') {
       typeRows = [
-        row('Resolution', stream.width && stream.height ? `${stream.width}×${stream.height}` : null),
-        row('Aspect ratio', formatAspectRatio(stream)),
-        row('Frame rate', formatFps(stream.r_frame_rate || stream.avg_frame_rate)),
-        row('Avg frame rate', formatFps(stream.avg_frame_rate)),
-        row('Bits per pixel', formatBitsPerPixel(stream)),
-        row('Pixel format', stream.pix_fmt),
-        row('Color space', stream.color_space),
-        row('Color range', stream.color_range),
-        row('Color primaries', stream.color_primaries),
-        row('Color transfer', stream.color_transfer),
-        row('Bits per raw sample', stream.bits_per_raw_sample || inferBitsFromPixFmt(stream.pix_fmt)),
-        row('Field order', stream.field_order || 'progressive'),
-        row('GOP size', gopSize != null ? `${gopSize} frames` : null),
-        row('Reorder delay', formatReorderDelay(stream.has_b_frames)),
-        row('Frame types', formatFrameTypeCounts(jsonData.frames)),
-        row('Refs', stream.refs),
+        rowKeep('Resolution', stream.width && stream.height ? `${stream.width}×${stream.height}` : null),
+        rowKeep('Aspect ratio', formatAspectRatio(stream)),
+        rowKeep('Frame rate', formatFps(stream.r_frame_rate || stream.avg_frame_rate)),
+        rowKeep('Avg frame rate', formatFps(stream.avg_frame_rate)),
+        rowKeep('Bits per pixel', formatBitsPerPixel(stream)),
+        rowKeep('Pixel format', stream.pix_fmt),
+        rowKeep('Color space', formatColorSpace(stream)),
+        rowKeep('Color range', formatColorRange(stream.color_range)),
+        rowKeep('Color primaries', stream.color_primaries),
+        rowKeep('Color transfer', stream.color_transfer),
+        rowKeep('Chroma location', stream.chroma_location),
+        rowKeep('Bits per raw sample', stream.bits_per_raw_sample || inferBitsFromPixFmt(stream.pix_fmt)),
+        rowKeep('Field order', stream.field_order || 'progressive'),
+        rowKeep('GOP size', gopSize != null ? `${gopSize} frames` : null),
+        rowKeep('Reorder delay', formatReorderDelay(stream.has_b_frames)),
+        rowKeep('Frame types', formatFrameTypeCounts(jsonData.frames)),
+        rowKeep('Refs', stream.refs),
       ].join('');
     } else if (type === 'audio') {
       typeRows = [
-        row('Sample rate', stream.sample_rate ? `${stream.sample_rate} Hz` : null),
-        row('Channels', stream.channels),
-        row('Channel layout', stream.channel_layout),
-        row('Sample format', stream.sample_fmt),
-        row('Bits per sample', stream.bits_per_sample || stream.bits_per_raw_sample),
+        rowKeep('Sample rate', stream.sample_rate ? `${stream.sample_rate} Hz` : null),
+        rowKeep('Channels', stream.channels),
+        rowKeep('Channel layout', stream.channel_layout),
+        rowKeep('Sample format', stream.sample_fmt),
+        rowKeep('Bits per sample', stream.bits_per_sample || stream.bits_per_raw_sample),
       ].join('');
     } else if (type === 'subtitle') {
       typeRows = [
-        row('Width', stream.width),
-        row('Height', stream.height),
+        rowKeep('Width', stream.width),
+        rowKeep('Height', stream.height),
       ].join('');
     }
 
@@ -338,17 +362,17 @@ function updatemediaInfo(jsonData, opts) {
         <h3>Properties</h3>
         <div class="info-subtitle">${escapeHtml(type)} · #${stream.index ?? listIndex}</div>
         <div class="info-grid">
-          ${row('Codec', stream.codec_long_name || stream.codec_name, { full: true })}
-          ${row('Codec name', stream.codec_name)}
-          ${row('Profile', stream.profile)}
-          ${row('Level', level)}
-          ${row('Bit rate', formatBitrate(stream.bit_rate))}
-          ${row('Duration', formatDuration(stream.duration || stream.tags?.DURATION))}
-          ${row('Time base', stream.time_base)}
-          ${row('Start', formatDuration(stream.start_time))}
-          ${row('Frames', stream.nb_frames)}
+          ${rowKeep('Codec', stream.codec_long_name || stream.codec_name, { full: true })}
+          ${rowKeep('Codec name', stream.codec_name)}
+          ${rowKeep('Profile', stream.profile)}
+          ${rowKeep('Level', level)}
+          ${rowKeep('Bit rate', formatBitrate(stream.bit_rate))}
+          ${rowKeep('Duration', formatDuration(stream.duration || stream.tags?.DURATION))}
+          ${rowKeep('Time base', stream.time_base)}
+          ${rowKeep('Start', formatDuration(stream.start_time))}
+          ${rowKeep('Frames', stream.nb_frames)}
           ${typeRows}
-          ${row('Disposition', dispositionOn || null)}
+          ${rowKeep('Disposition', dispositionOn || null)}
           ${tagRows ? `<div class="info-subtitle info-grid-break">Tags</div>${tagRows}` : ''}
         </div>
       </div>

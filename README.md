@@ -39,7 +39,7 @@ Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; 
 | Motion vectors | FFmpeg codecview motion arrows (codec-dependent) |
 | QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.)  |
 
-Hard codecs (e.g. ProRes) use an ffmpeg→canvas preview path so scopes and scrubbing still work when the browser cannot decode the file natively.
+Hard codecs (e.g. ProRes, HEVC, 10-bit 4:2:2) use an ffmpeg→canvas preview path with color-managed stills (WebP when available, otherwise PNG/AVIF/JPEG) so scopes and scrubbing still work when the browser cannot decode the file natively.
 
 ## Raw / uncompressed formats
 

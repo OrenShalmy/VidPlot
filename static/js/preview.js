@@ -160,7 +160,13 @@
                         } catch (_) { /* ignore */ }
                         throw new Error(details);
                     }
-                    return res.blob();
+                    const blob = await res.blob();
+                    // Prefer server Content-Type (webp/png/avif/jpeg) for decode
+                    const mime = res.headers.get("Content-Type") || blob.type;
+                    if (mime && blob.type !== mime) {
+                        return new Blob([blob], { type: mime.split(";")[0].trim() });
+                    }
+                    return blob;
                 })
                 .then((blob) => {
                     if (token !== fetchToken || !blob) return;
