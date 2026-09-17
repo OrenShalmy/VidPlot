@@ -38,7 +38,7 @@ After open, the layout settles into four zones:
 | **Preview**                 | Picture (native `<video>`, or ffmpeg→canvas for hard codecs) |
 | **Scope toggles**           | Analyzers under the preview                                  |
 | **Frame graph + transport** | Per-frame size bars and play/seek                            |
-| **Tracks & properties**     | Stream tree and detailed metadata                            |
+| **Media info**              | MediaInfo-style sections and fields                          |
 
 
 ![Main workspace after loading Big Buck Bunny](howto/howto-02-overview.png)
@@ -61,15 +61,13 @@ Watch the status near the seek bar. Long HEVC or broadcast files can take a whil
 
 
 
-## 4. Tracks & properties
+## 4. Media info
 
-**Tracks** lists video / audio / captions. Click a stream to focus it.
+The right rail shows a MediaInfo-style report: **General**, **Video**, **Audio**, **Text**, **Menu**, and **Metadata** (plus Other/Image when present). Jump via the section chips at the top of the rail.
 
-**Properties** shows codec, profile/level, resolution, frame rate, `pix_fmt`, color metadata, GOP size, reorder delay, frame-type counts, bit rate, encoder tags, and more.
+Fields stay aligned in compare mode so you can flip A/B without rows shifting. Drag the vertical splitter to resize; use **Fold** (or `]`) to collapse the rail.
 
-Drag the vertical splitter to resize the rail; use **Fold** (or `]`) to collapse it.
-
-![Tracks tree and properties rail](howto/howto-04-tracks-properties.png)
+![Media info rail](howto/howto-04-tracks-properties.png)
 
 ---
 
@@ -109,6 +107,8 @@ Under the graph:
 | **Space**                        | Play / pause                           |
 | **,** / **.** (or **<** / **>**) | Step one frame                         |
 | **←** / **→**                    | Seek ±1 s                              |
+| **A** / **B**                    | Compare: select slot (media info + graph) |
+| **Alt+←** / **Alt+→**            | Compare: nudge B frame offset          |
 
 
 ---
@@ -194,7 +194,7 @@ Enter compare via the load dialog or **Compare with another video** in Options.
 
 - **Vertical** or **Horizontal** wipe
 - Drag the **divider**
-- **Click** a side (A or B) to drive Tracks, properties, and the frame graph from that slot
+- **Click** a side (or press **A** / **B**) to drive Media info and the frame graph from that slot
 - **Scroll** to zoom; drag to pan; **double-click** for fullscreen
 - Scopes apply to **both** pictures at the shared timeline
 - **End compare** returns to single-clip mode
@@ -228,8 +228,10 @@ Useful for source vs super-resolution (or any pipeline delay) without bouncing b
 
 | Key   | Action                            |
 | ----- | --------------------------------- |
-| **]** | Fold / expand Tracks & properties |
+| **]** | Fold / expand Media info          |
 | **g** | Fold / expand Frame graph         |
+| **A** | Compare: select slot A            |
+| **B** | Compare: select slot B            |
 
 
 Drag the horizontal splitter between preview and graph, and the vertical splitter beside the properties rail.

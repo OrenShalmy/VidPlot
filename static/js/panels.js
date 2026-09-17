@@ -26,7 +26,7 @@
             toggle.hidden = collapsed;
             const label = toggle.querySelector(".panel-fold-label");
             if (label) label.textContent = collapsed ? "Expand" : "Fold";
-            toggle.title = collapsed ? "Show tracks and properties" : "Fold tracks and properties";
+            toggle.title = collapsed ? "Show media info" : "Fold media info";
         }
         if (expand) {
             expand.hidden = !collapsed;
@@ -247,15 +247,8 @@
         resizeAfterPanelChange();
     }
 
+    /** Expand side rail + frame graph (also used when a new video loads). */
     function expandAllPanels() {
-        document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
-        syncSideUi();
-        syncGraphUi();
-        resizeAfterPanelChange();
-    }
-
-    /** New video: side rail open, frame graph expanded. */
-    function resetPanelsForNewVideo() {
         document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
         syncSideUi();
         syncGraphUi();
@@ -307,9 +300,7 @@
     });
 
     window.vidplotExpandPanels = expandAllPanels;
-    window.vidplotResetPanelsForNewVideo = resetPanelsForNewVideo;
-    window.vidplotSetSideCollapsed = setSideCollapsed;
-    window.vidplotSetGraphCollapsed = setGraphCollapsed;
+    window.vidplotResetPanelsForNewVideo = expandAllPanels;
     window.vidplotIsGraphCollapsed = isGraphCollapsed;
     window.vidplotGetPeekChartHeight = getPeekChartHeight;
 })();

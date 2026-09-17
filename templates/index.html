@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
-  <script src="{{ url_for('static', filename='js/compare.js') }}?v=compare1"></script>
+  <script src="{{ url_for('static', filename='js/compare.js') }}?v=compare2"></script>
   <script src="{{ url_for('static', filename='js/player.js') }}"></script>
   <script src="{{ url_for('static', filename='js/panels.js') }}"></script>
   <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
@@ -159,7 +159,7 @@
           </div>
           <div id="compareViewport" class="compare-viewport">
             <div id="comparePane" class="compare-pane">
-              <div class="compare-layer" data-slot="A" data-compare-side="left">
+              <div class="compare-layer" data-slot="A">
                 <div class="compare-label" id="compareLabelA"></div>
                 <div class="compare-media">
                   <video id="videoPlayerA" playsinline muted>
@@ -169,7 +169,7 @@
                   <img id="scopePreviewA" class="compare-scope-img" alt="" hidden>
                 </div>
               </div>
-              <div class="compare-layer compare-layer-b" data-slot="B" data-compare-side="right">
+              <div class="compare-layer compare-layer-b" data-slot="B">
                 <div class="compare-label" id="compareLabelB"></div>
                 <div class="compare-media">
                   <video id="videoPlayerB" playsinline muted>
@@ -283,19 +283,19 @@
 
   <div id="sideRailSplitter" class="panel-splitter panel-splitter-v" role="separator" aria-orientation="vertical" aria-label="Resize properties panel" tabindex="0"></div>
 
-  <aside id="sideRail" aria-label="Tracks and properties">
+  <aside id="sideRail" aria-label="Media information">
     <div class="panel-side-bar">
-      <span class="panel-side-title">Tracks &amp; properties</span>
-      <button type="button" id="sideRailToggle" class="panel-fold-btn" title="Fold tracks and properties" aria-expanded="true" aria-controls="sideRailBody">
+      <span class="panel-side-title">Media info</span>
+      <button type="button" id="sideRailToggle" class="panel-fold-btn" title="Fold media info" aria-expanded="true" aria-controls="sideRailBody">
         <span class="panel-fold-chevron" aria-hidden="true"></span>
         <span class="panel-fold-label">Fold</span>
       </button>
     </div>
-    <button type="button" id="sideRailExpand" class="panel-edge-tab" title="Show tracks and properties" aria-expanded="false" aria-controls="sideRailBody" hidden>
-      <span class="panel-edge-tab-text">Tracks</span>
+    <button type="button" id="sideRailExpand" class="panel-edge-tab" title="Show media info" aria-expanded="false" aria-controls="sideRailBody" hidden>
+      <span class="panel-edge-tab-text">Info</span>
     </button>
     <div id="sideRailBody">
-      <div id="streamTree" aria-label="Tracks"></div>
+      <div id="streamTree" aria-label="Sections"></div>
       <div id="mediaInfo" class="media-info-overlay"></div>
     </div>
   </aside>
@@ -360,6 +360,9 @@
           <li><span class="shortcut-keys"><kbd>−</kbd></span><span class="shortcut-desc">Zoom out</span></li>
           <li><span class="shortcut-keys"><kbd>]</kbd></span><span class="shortcut-desc">Fold side panels</span></li>
           <li><span class="shortcut-keys"><kbd>G</kbd></span><span class="shortcut-desc">Fold frame graph</span></li>
+          <li><span class="shortcut-keys"><kbd>A</kbd></span><span class="shortcut-desc">Compare: select slot A</span></li>
+          <li><span class="shortcut-keys"><kbd>B</kbd></span><span class="shortcut-desc">Compare: select slot B</span></li>
+          <li><span class="shortcut-keys"><kbd>Alt</kbd><kbd>←</kbd><kbd>→</kbd></span><span class="shortcut-desc">Compare: nudge B offset</span></li>
         </ul>
       </div>
     </div>

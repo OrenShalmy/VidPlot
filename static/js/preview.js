@@ -502,7 +502,6 @@
     }
 
     window.vidplotCompareFrameLockState = frameLockState;
-    window.vidplotCompareOffsetSeconds = offsetSeconds;
 
     let singleSnapshot = null;
 

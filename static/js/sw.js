@@ -1,9 +1,15 @@
-const CACHE_NAME = 'vidplot-v5';
+const CACHE_NAME = 'vidplot-v6';
 const ASSETS_TO_CACHE = [
-	'/static/js/plotly.js',
+	'/static/css/style.css',
+	'/static/js/preview.js',
+	'/static/js/compare.js',
 	'/static/js/player.js',
+	'/static/js/panels.js',
 	'/static/js/upload.js',
+	'/static/js/scopes.js',
+	'/static/js/plotly.js',
 	'/static/js/config.js',
+	'/static/js/update.js',
 	'/static/js/mediainfo.js',
 ];
 

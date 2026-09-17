@@ -15,13 +15,13 @@ See how every frame is encoded, not just the headline bitrate.
 - **Time display** — seconds, timecode, timestamp, or frame index
 - **Zoom** the graph to inspect short GOPs or spikes
 
-## Tracks & properties
+## Media info
 
-Container and stream metadata from ffprobe, plus analysis derived from the frame pass.
+Container and stream metadata from ffprobe, plus analysis derived from the frame pass — shown as a MediaInfo-style report (General / Video / Audio / Text / Menu / Metadata).
 
-- **Track tree** — video, audio, captions; click a stream for detail
-- **Properties** — codec, profile/level, resolution, frame rate, pixel format, color metadata, GOP size, reorder delay, frame-type counts, bit rate, encoder tags
-- **Resizable layout** — properties rail full height; frame graph under the preview
+- **Fixed field layout** — missing values stay as placeholders so compare A/B rows do not shift
+- **Section jump nav** — chips at the top of the rail
+- **Resizable layout** — media info rail full height; frame graph under the preview
 
 ## Broadcast scopes
 
@@ -60,10 +60,10 @@ Drop or pick a **second clip** while one is already open — choose **Compare wi
 
 - **Vertical or horizontal** wipe divider (thin line, easy to drag)
 - **Labels** on each side with the file name
-- **Click** a side to show that clip in **Tracks & properties** and the frame graph
+- **Click** a side (or press **A** / **B**) to drive **Media info** and the frame graph from that slot
 - **Scopes apply to both** videos at the same timecode
 - **Zoom and pan** on the compare view; **double-click** for fullscreen
-- **End compare** returns to single-clip mode
+- **Alt+← / Alt+→** nudge B frame offset; **End compare** returns to single-clip mode
 
 ## Options & desktop shell
 

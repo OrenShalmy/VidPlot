@@ -6,7 +6,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const mediaInfo = document.getElementById("mediaInfo");
     const videoSection = document.getElementById("videoSection");
     const bottomChrome = document.getElementById("bottomChrome");
-    const frameGraphSection = document.getElementById("frameGraphSection");
     const sideMenu = document.getElementById("sideMenu");
     const sideMenuToggle = document.getElementById("sideMenuToggle");
     const sideMenuFold = document.getElementById("sideMenuFold");
@@ -145,7 +144,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (videoSection) videoSection.style.display = "none";
     if (bottomChrome) bottomChrome.style.display = "none";
-    else if (frameGraphSection) frameGraphSection.style.display = "none";
 
     function showSideMenu() {
         if (!sideMenu) return;
@@ -192,11 +190,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (dropArea) dropArea.style.display = "";
         if (videoSection) videoSection.style.display = "flex";
         if (bottomChrome) bottomChrome.style.display = "flex";
-        else if (frameGraphSection) frameGraphSection.style.display = "flex";
         if (typeof window.vidplotResetPanelsForNewVideo === "function") {
             window.vidplotResetPanelsForNewVideo();
-        } else if (typeof window.vidplotExpandPanels === "function") {
-            window.vidplotExpandPanels();
         }
         showSideMenu();
     }
@@ -210,7 +205,6 @@ document.addEventListener("DOMContentLoaded", function () {
         document.body.classList.remove("panel-side-collapsed", "panel-graph-collapsed");
         if (videoSection) videoSection.style.display = "none";
         if (bottomChrome) bottomChrome.style.display = "none";
-        else if (frameGraphSection) frameGraphSection.style.display = "none";
         if (dropArea) dropArea.style.display = "flex";
         showSideMenu();
     }
@@ -603,7 +597,6 @@ document.addEventListener("DOMContentLoaded", function () {
             filename: result.filename || jsonData?.format?.filename || "",
             jsonData,
             previewMode: result.preview_hint === "ffmpeg" ? "ffmpeg" : "native",
-            generation,
             videoUrl: result.video_url,
         };
         if (typeof window.vidplotAssignCompareSlot === "function") {

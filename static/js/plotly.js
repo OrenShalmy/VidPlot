@@ -635,7 +635,7 @@ function setupPlotlyChart(jsonData) {
         }
     }
 
-    function applyTimelineMode({ preserveZoom = false } = {}) {
+    function applyTimelineMode() {
         const chartDiv = document.getElementById('frameChart');
         updateRebaseButton();
         if (!chartDiv || typeof Plotly === 'undefined' || !chartDiv.data) return;
@@ -668,7 +668,7 @@ function setupPlotlyChart(jsonData) {
     window.vidplotToggleTimelineRebase = () => {
         if (!timelineOffsetVisible) return;
         timelineRebased = !timelineRebased;
-        applyTimelineMode({ preserveZoom: true });
+        applyTimelineMode();
     };
 
     // --- Playback Helpers (state on transport singleton) ---
@@ -1172,10 +1172,4 @@ function setupPlotlyChart(jsonData) {
     transport.onKeyDown = handleKeydown;
     document.addEventListener('keydown', handleKeydown, true);
     ensureVidplotFocusGuards(transport);
-    // Drop legacy dual-binding if an older session left it around
-    if (window._vidplotKeyHandler) {
-        document.removeEventListener('keydown', window._vidplotKeyHandler, true);
-        videoPlayer.removeEventListener('keydown', window._vidplotKeyHandler, true);
-        window._vidplotKeyHandler = null;
-    }
 }

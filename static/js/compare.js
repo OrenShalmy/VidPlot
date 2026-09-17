@@ -20,7 +20,6 @@
             zoom: 1,
             panX: 0,
             panY: 0,
-            fullscreen: false,
             slots: {
                 A: null,
                 B: null,
@@ -218,7 +217,6 @@
                 jsonData: window.vidplotJsonData,
                 previewMode: window.vidplotPreviewMode || "native",
                 videoUrl: window.vidplotCurrentVideoUrl || "",
-                generation: 0,
             };
         }
         showCompareUi();
@@ -232,7 +230,6 @@
         const cmp = window.vidplotCompare;
         cmp.enabled = false;
         cmp.slots.B = null;
-        cmp.fullscreen = false;
         showSingleUi();
         if (typeof window.vidplotDestroySlotPreview === "function") {
             window.vidplotDestroySlotPreview("B");
@@ -416,15 +413,9 @@
             if (!target) return;
             if (!document.fullscreenElement) {
                 target.requestFullscreen?.().catch(() => {});
-                window.vidplotCompare.fullscreen = true;
             } else {
                 document.exitFullscreen?.();
-                window.vidplotCompare.fullscreen = false;
             }
-        });
-
-        document.addEventListener("fullscreenchange", () => {
-            window.vidplotCompare.fullscreen = !!document.fullscreenElement;
         });
     }
 
@@ -553,6 +544,37 @@
         }, true);
     }
 
+    function isTypingTarget(target) {
+        if (typeof isVidplotTypingTarget === "function") {
+            return isVidplotTypingTarget(target);
+        }
+        if (!target) return false;
+        const tag = target.tagName;
+        return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function bindSlotKeys() {
+        // A / B select the active compare slot (same as clicking that side):
+        // drives Media info + frame graph. Capture phase so it wins over
+        // unrelated handlers; skip when typing in a field.
+        document.addEventListener("keydown", (e) => {
+            if (!isEnabled()) return;
+            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+            if (isTypingTarget(document.activeElement) || isTypingTarget(e.target)) return;
+            if (document.querySelector(".load-choice-dialog:not([hidden])")) return;
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            const code = e.code || "";
+            let slot = null;
+            if (key === "a" || code === "KeyA") slot = "A";
+            else if (key === "b" || code === "KeyB") slot = "B";
+            if (!slot) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+            setActiveSlot(slot);
+        }, true);
+    }
+
     function bindToolbar() {
         const vert = el("compareOrientVertical");
         const horiz = el("compareOrientHorizontal");
@@ -608,6 +630,7 @@
         bindSlotClicks();
         bindToolbar();
         bindOffsetKeys();
+        bindSlotKeys();
     });
 
     window.vidplotEnterCompareMode = enterCompareMode;

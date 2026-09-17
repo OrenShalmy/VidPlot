@@ -496,10 +496,6 @@ document.addEventListener("DOMContentLoaded", function () {
         else if (active.size) refreshScopes(true);
     };
 
-    window.vidplotRefreshScopes = function () {
-        if (active.size) refreshScopes(true);
-    };
-
     videoEl.addEventListener("loadeddata", () => {
         if (active.size) updateScopePip(selectedFilters());
     });
