@@ -53,7 +53,11 @@ While a clip is open you can still drop another file anywhere, or use the **Opti
 
 Opening a file runs in stages: container/stream properties → frame graph (decode for I/P/B) → optional Avg QP pass.
 
-Watch the status near the seek bar. Long HEVC or broadcast files can take a while for the graph; that is normal.
+Reopening the **same local file** (unchanged size/mtime) reuses the saved analysis so Media info and the frame graph appear without a full `show_frames` pass. Compare also reuses cached packet PTS when present.
+
+FFmpeg→canvas preview (ProRes, HEVC, etc.) uses **hardware decode when available** (`-hwaccel auto`) with automatic software fallback. While scrubbing or dragging the wipe, stills use a lower-res JPEG; a full color-managed frame refreshes shortly after you settle.
+
+Watch the status near the seek bar. Long HEVC or broadcast files can take a while for the graph on first open; that is normal.
 
 ![Workspace while analysis is still settling](howto/howto-03-analysis-status.png)
 
@@ -133,7 +137,7 @@ Under the preview, toggle:
 
 **Overlays** shows or hides the live PiP of the picture and the axis legend on top of scopes.
 
-Scopes update for the **current frame**. Hard codecs (for example ProRes) use the ffmpeg preview path so scrubbing and scopes still work when the browser cannot decode natively.
+Scopes update for the **current frame**. Hard codecs (for example ProRes) use the ffmpeg preview path so scrubbing and scopes still work when the browser cannot decode natively. Waveform / parade / histogram / vectorscope seeks use the same hardware-decode path as preview; motion-vector and QP-map scopes stay on software decode so side data is preserved.
 
 ![Waveform and RGB parade scopes](howto/howto-07-scopes.png)
 

@@ -39,7 +39,7 @@ Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; 
 | Motion vectors | FFmpeg codecview motion arrows (codec-dependent) |
 | QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.)  |
 
-Hard codecs (e.g. ProRes, HEVC, 10-bit 4:2:2) use an ffmpeg→canvas preview path with color-managed stills (WebP when available, otherwise PNG/AVIF/JPEG) so scopes and scrubbing still work when the browser cannot decode the file natively.
+Hard codecs (e.g. ProRes, HEVC, 10-bit 4:2:2) use an ffmpeg→canvas preview path with color-managed stills (WebP when available, otherwise PNG/AVIF/JPEG). Decode uses hardware acceleration when ffmpeg provides it, and scrubbing uses a lighter still until you settle on a frame.
 
 ## Raw / uncompressed formats
 
@@ -75,6 +75,8 @@ Electron desktop app with a bundled analysis server. Open local paths without co
 - **Drag-and-drop** anywhere in the app while a clip is open
 - Configure **ffprobe** / **ffmpeg** paths when binaries are not on `PATH`
 - Keyboard shortcuts listed in the tray
+- **Faster reopen** — local analysis JSON is reused when size/mtime match
+- **HW-accelerated preview** — ffmpeg canvas path uses `-hwaccel auto` when the installed ffmpeg supports it (VideoToolbox / NVDEC / etc.), with software fallback
 
 ## Quick start
 

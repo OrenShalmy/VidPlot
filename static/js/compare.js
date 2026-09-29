@@ -444,11 +444,15 @@
         const data = getSlotData(slot);
         if (!data?.path) return;
         if (Array.isArray(data.frameTimes) && data.frameTimes.length) return;
-        // Fetched unconditionally, even when the decoded table happens to be
-        // present already. It costs ~0.2 s and makes the lock's data source
-        // independent of which analysis finished first -- otherwise whether the
-        // fallback exists depends on load ordering, which is exactly the kind of
-        // thing that works on a short clip and fails on a 7-minute one.
+        // Prefer PTS persisted on the analysis JSON (cache reopen / prior probe).
+        const cachedPts = data.jsonData?.pts_times;
+        if (Array.isArray(cachedPts) && cachedPts.length) {
+            data.frameTimes = cachedPts;
+            renderOffsetUi();
+            return;
+        }
+        // Fetched unconditionally when not cached, even if decoded frames exist.
+        // Packet probe is ~0.2 s and keeps the lock independent of show_frames.
         if (frameTimesInFlight[slot] === data.path) return;
         frameTimesInFlight[slot] = data.path;
         const body = { path: data.path };
@@ -467,6 +471,9 @@
                 if (!out || !cur || cur.path !== data.path) return;
                 if (Array.isArray(out.times) && out.times.length) {
                     cur.frameTimes = out.times;
+                    if (cur.jsonData && typeof cur.jsonData === "object") {
+                        cur.jsonData.pts_times = out.times;
+                    }
                     renderOffsetUi();
                 }
             })

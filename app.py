@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import json
 import tempfile
+import threading
+from collections import OrderedDict
 from functools import lru_cache
 from urllib.parse import urlparse, unquote
 from flask import Flask, request, jsonify, send_from_directory, render_template, url_for, send_file, abort, redirect, Response
@@ -45,6 +47,75 @@ _SUBPROCESS_NO_WINDOW = (
     if sys.platform == 'win32'
     else {}
 )
+
+# Hardware decode for preview/scopes stills. Disabled for the process after a hard failure.
+HWACCEL_DISABLED = False
+HWACCEL_LAST_ERROR = ''
+
+# Process-local preview still LRU (path|time|width|fmt|quality|input_hash → payload).
+_PREVIEW_LRU = OrderedDict()
+_PREVIEW_LRU_LOCK = threading.Lock()
+_PREVIEW_LRU_MAX = 48
+
+
+def hwaccel_argv():
+    if HWACCEL_DISABLED:
+        return []
+    return ['-hwaccel', 'auto']
+
+
+def run_ffmpeg_capture(cmd_builder):
+    """Run ffmpeg via cmd_builder(use_hwaccel: bool).
+
+    On hwaccel failure, retry once without and disable hwaccel for this process
+    so subsequent seeks do not thrash.
+    """
+    global HWACCEL_DISABLED, HWACCEL_LAST_ERROR
+    use_hw = not HWACCEL_DISABLED
+    proc = subprocess.run(cmd_builder(use_hw), capture_output=True, **_SUBPROCESS_NO_WINDOW)
+    if proc.returncode == 0 and proc.stdout:
+        return proc
+    if not use_hw:
+        return proc
+    err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
+    HWACCEL_LAST_ERROR = err or 'hwaccel failed'
+    soft = subprocess.run(cmd_builder(False), capture_output=True, **_SUBPROCESS_NO_WINDOW)
+    if soft.returncode == 0 and soft.stdout:
+        HWACCEL_DISABLED = True
+        return soft
+    return soft
+
+
+def preview_lru_key(path, time_sec, width, fmt, quality, input_opts):
+    t_round = round(float(time_sec or 0), 3)
+    inp = json.dumps(input_opts or {}, sort_keys=True, default=str)
+    inp_hash = hashlib.sha1(inp.encode('utf-8')).hexdigest()[:8]
+    return f'{path}|{t_round}|{int(width)}|{fmt}|{quality}|{inp_hash}'
+
+
+def preview_lru_get(key):
+    with _PREVIEW_LRU_LOCK:
+        if key not in _PREVIEW_LRU:
+            return None
+        _PREVIEW_LRU.move_to_end(key)
+        return _PREVIEW_LRU[key]
+
+
+def preview_lru_put(key, value):
+    with _PREVIEW_LRU_LOCK:
+        _PREVIEW_LRU[key] = value
+        _PREVIEW_LRU.move_to_end(key)
+        while len(_PREVIEW_LRU) > _PREVIEW_LRU_MAX:
+            _PREVIEW_LRU.popitem(last=False)
+
+
+def preview_lru_invalidate_path(path):
+    if not path:
+        return
+    prefix = f'{path}|'
+    with _PREVIEW_LRU_LOCK:
+        for key in [k for k in _PREVIEW_LRU if k.startswith(prefix)]:
+            del _PREVIEW_LRU[key]
 
 
 def primary_video_codec(json_data):
@@ -837,6 +908,90 @@ def analysis_json_paths(video_path):
     return json_filename, os.path.join(OUTPUT_FOLDER, json_filename)
 
 
+def local_file_fingerprint(video_path, input_opts=None):
+    """Stable identity for local analysis cache reuse."""
+    st = os.stat(video_path)
+    mtime_ns = getattr(st, 'st_mtime_ns', int(st.st_mtime * 1_000_000_000))
+    return {
+        'size': st.st_size,
+        'mtime_ns': int(mtime_ns),
+        'input_opts': normalize_input_opts(input_opts) or None,
+    }
+
+
+def fingerprint_matches(json_data, video_path, input_opts=None):
+    fp = (json_data or {}).get('cache_fingerprint')
+    if not isinstance(fp, dict):
+        return False
+    try:
+        current = local_file_fingerprint(video_path, input_opts)
+    except OSError:
+        return False
+    return (
+        fp.get('size') == current['size']
+        and fp.get('mtime_ns') == current['mtime_ns']
+        and (fp.get('input_opts') or None) == current['input_opts']
+    )
+
+
+def load_cached_analysis(video_path, input_opts=None):
+    """Return cached analysis JSON when fingerprint matches; else None."""
+    if is_http_url(video_path):
+        return None
+    _, output_json_path = analysis_json_paths(video_path)
+    if not os.path.isfile(output_json_path):
+        return None
+    try:
+        with open(output_json_path, 'r', encoding='utf-8') as handle:
+            cached = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if fingerprint_matches(cached, video_path, input_opts):
+        return cached
+    # Soft migrate pre-fingerprint caches: same size + input opts + frames present.
+    try:
+        current = local_file_fingerprint(video_path, input_opts)
+    except OSError:
+        return None
+    fmt = cached.get('format') or {}
+    try:
+        cached_size = int(fmt.get('file_size') or 0)
+    except (TypeError, ValueError):
+        cached_size = 0
+    cached_input = fmt.get('vidplot_input') or None
+    frames = cached.get('frames') or []
+    if (
+        cached_size
+        and cached_size == current['size']
+        and cached_input == current['input_opts']
+        and frames
+        and not cached.get('frames_pending')
+    ):
+        cached['cache_fingerprint'] = current
+        return cached
+    return None
+
+
+def persist_pts_times(video_path, times, input_opts=None):
+    """Merge packet PTS list into the analysis JSON for compare reopen."""
+    _, output_json_path = analysis_json_paths(video_path)
+    if not os.path.isfile(output_json_path):
+        return
+    try:
+        with open(output_json_path, 'r', encoding='utf-8') as handle:
+            json_data = json.load(handle)
+        json_data['pts_times'] = list(times)
+        if not is_http_url(video_path):
+            try:
+                json_data['cache_fingerprint'] = local_file_fingerprint(video_path, input_opts)
+            except OSError:
+                pass
+        with open(output_json_path, 'w', encoding='utf-8') as handle:
+            json.dump(json_data, handle)
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+
+
 def ffmpeg_is_available(config=None):
     config = config if config is not None else load_config()
     try:
@@ -857,8 +1012,72 @@ def analyze_video_file(video_path, input_opts=None):
     opts = normalize_input_opts(input_opts)
 
     config = load_config()
-    ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
     ffmpeg_available = ffmpeg_is_available(config)
+
+    # Local reopen: reuse complete analysis when size/mtime/input match.
+    cached = None if remote else load_cached_analysis(video_path, opts)
+    if cached is not None:
+        frames = cached.get('frames') or []
+        frames_ready = bool(frames) and not cached.get('frames_pending')
+        frames_pending = not frames_ready
+        if frames_ready:
+            if cached.get('qp_pending') is True:
+                qp_pending = True
+            elif cached.get('qp_pending') is False:
+                qp_pending = False
+            else:
+                qp_pending = bool(ffmpeg_available) and not cached.get('qp_available')
+        else:
+            qp_pending = bool(ffmpeg_available)
+        cached['frames_pending'] = frames_pending
+        cached['qp_pending'] = qp_pending
+        if 'format' not in cached:
+            cached['format'] = {}
+        cached['format']['filename'] = filename
+        cached['format']['source_path'] = video_path
+        cached['format']['is_remote'] = False
+        if opts:
+            cached['format']['vidplot_input'] = opts
+        try:
+            cached['cache_fingerprint'] = local_file_fingerprint(video_path, opts)
+        except OSError:
+            pass
+        enrich_analysis_color(cached)
+        try:
+            with open(output_json_path, 'w', encoding='utf-8') as handle:
+                json.dump(cached, handle)
+        except OSError:
+            pass
+
+        current_source_path = video_path
+        register_opened_media(video_path)
+        duration = float(cached.get('format', {}).get('duration', 0) or 0)
+        video_url = local_video_playback_url(video_path)
+        codec = primary_video_codec(cached)
+        pix_fmt = primary_video_pix_fmt(cached)
+        format_name = (cached.get('format') or {}).get('format_name') or ''
+        preview_hint = preview_hint_for_codec(codec, pix_fmt)
+        if opts or 'rawvideo' in format_name or 'yuv4mpeg' in format_name:
+            preview_hint = 'ffmpeg'
+
+        return {
+            'message': 'File opened successfully',
+            'json_url': url_for('serve_log', filename=json_filename),
+            'video_url': video_url,
+            'duration': duration,
+            'filename': filename,
+            'source_path': video_path,
+            'is_remote': False,
+            'preview_hint': preview_hint,
+            'status': 'opened',
+            'cache_hit': True,
+            'frames_pending': frames_pending,
+            'qp_pending': qp_pending,
+            'data': cached,
+        }
+
+    preview_lru_invalidate_path(video_path)
+    ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
 
     streams_cmd = [
         ffprobe_bin,
@@ -908,6 +1127,11 @@ def analyze_video_file(video_path, input_opts=None):
 
     synthesize_raw_duration(video_path, opts, json_data)
     enrich_analysis_color(json_data)
+    if not remote:
+        try:
+            json_data['cache_fingerprint'] = local_file_fingerprint(video_path, opts)
+        except OSError:
+            pass
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
@@ -988,6 +1212,11 @@ def analyze_frames_for_path(video_path, input_opts=None):
     json_data['format']['source_path'] = video_path
     if opts:
         json_data['format']['vidplot_input'] = opts
+    if not is_http_url(video_path):
+        try:
+            json_data['cache_fingerprint'] = local_file_fingerprint(video_path, opts)
+        except OSError:
+            pass
 
     with open(output_json_path, 'w') as f:
         json.dump(json_data, f)
@@ -1016,6 +1245,18 @@ def frame_times_for_path(video_path, input_opts=None):
     video_path = validate_video_path(video_path)
     filename = source_display_name(video_path)
     opts = resolve_input_opts(video_path, input_opts)
+
+    cached = load_cached_analysis(video_path, opts)
+    if cached is not None:
+        pts = cached.get('pts_times')
+        if isinstance(pts, list) and pts:
+            return {
+                'source_path': video_path,
+                'times': pts,
+                'count': len(pts),
+                'cache_hit': True,
+            }
+
     config = load_config()
     ffprobe_bin = resolve_binary(config.get('ffprobe_path'), 'ffprobe')
 
@@ -1046,11 +1287,13 @@ def frame_times_for_path(video_path, input_opts=None):
         except (TypeError, ValueError):
             continue
     times.sort()
+    persist_pts_times(video_path, times, opts)
 
     return {
         'source_path': video_path,
         'times': times,
         'count': len(times),
+        'cache_hit': False,
     }
 # plus FFmpeg codecview for motion vectors / QP map:
 # https://trac.ffmpeg.org/wiki/Debug/MacroblocksAndMotionVectors
@@ -1424,9 +1667,10 @@ def select_preview_format(requested, caps):
     return 'jpeg'
 
 
-def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, fmt='auto'):
+def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, fmt='auto', quality='full'):
     """Seek and render one color-managed still for canvas preview.
 
+    quality='scrub' uses half width + JPEG for fast wipe/seek feedback.
     Returns (payload_bytes, mime_type, format_name).
     """
     video_path = validate_video_path(video_path)
@@ -1434,14 +1678,23 @@ def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, 
     config = load_config()
     ffmpeg_bin = resolve_binary(config.get('ffmpeg_path'), 'ffmpeg')
     t = clamp_seek_time(video_path, time_sec)
+    quality = 'scrub' if str(quality or '').lower() == 'scrub' else 'full'
     try:
         width = max(160, min(3840, int(max_width or 1920)))
     except (TypeError, ValueError):
         width = 1920
+    if quality == 'scrub':
+        width = max(160, width // 2)
+        fmt = 'jpeg'
 
     color = video_color_for_path(video_path)
     caps = preview_encoder_caps(ffmpeg_bin)
     chosen = select_preview_format(fmt, caps)
+    cache_key = preview_lru_key(video_path, t, width, chosen if quality == 'full' else 'jpeg', quality, opts)
+    cached = preview_lru_get(cache_key)
+    if cached:
+        return cached
+
     tried = set()
 
     while chosen not in tried:
@@ -1453,26 +1706,30 @@ def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, 
                 payload = _encode_preview_avif(
                     ffmpeg_bin, video_path, opts, t, vf, caps.get('av1_encoder') or 'libsvtav1'
                 )
-                return payload, 'image/avif', 'avif'
-            if chosen == 'webp':
+                result = (payload, 'image/avif', 'avif')
+            elif chosen == 'webp':
                 payload = _encode_preview_pipe(
                     ffmpeg_bin, video_path, opts, t, vf,
                     ['-f', 'image2pipe', '-vcodec', 'libwebp',
                      '-lossless', '1', '-compression_level', '4', 'pipe:1'],
                 )
-                return payload, 'image/webp', 'webp'
-            if chosen == 'png':
+                result = (payload, 'image/webp', 'webp')
+            elif chosen == 'png':
                 payload = _encode_preview_pipe(
                     ffmpeg_bin, video_path, opts, t, vf,
                     ['-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'],
                 )
-                return payload, 'image/png', 'png'
-            # jpeg
-            payload = _encode_preview_pipe(
-                ffmpeg_bin, video_path, opts, t, vf,
-                ['-f', 'image2pipe', '-vcodec', 'mjpeg', '-q:v', '2', 'pipe:1'],
-            )
-            return payload, 'image/jpeg', 'jpeg'
+                result = (payload, 'image/png', 'png')
+            else:
+                # jpeg — scrub uses q:v 5 for speed
+                qv = '5' if quality == 'scrub' else '2'
+                payload = _encode_preview_pipe(
+                    ffmpeg_bin, video_path, opts, t, vf,
+                    ['-f', 'image2pipe', '-vcodec', 'mjpeg', '-q:v', qv, 'pipe:1'],
+                )
+                result = (payload, 'image/jpeg', 'jpeg')
+            preview_lru_put(cache_key, result)
+            return result
         except ValueError:
             if chosen == 'jpeg':
                 raise
@@ -1489,13 +1746,16 @@ def render_preview_frame(video_path, time_sec, max_width=1920, input_opts=None, 
 
 
 def _encode_preview_pipe(ffmpeg_bin, video_path, opts, t, vf, tail_args):
-    cmd = [
-        ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
-        '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
-        '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
-        *tail_args,
-    ]
-    proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
+    def build(use_hw):
+        hw = ['-hwaccel', 'auto'] if use_hw else []
+        return [
+            ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
+            *hw,
+            '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
+            '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
+            *tail_args,
+        ]
+    proc = run_ffmpeg_capture(build)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
         raise ValueError(err or 'Preview frame failed')
@@ -1508,19 +1768,40 @@ def _encode_preview_avif(ffmpeg_bin, video_path, opts, t, vf, av1_encoder):
     try:
         with tempfile.NamedTemporaryFile(suffix='.avif', delete=False) as tmp:
             tmp_path = tmp.name
-        cmd = [
-            ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
-            '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
-            '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
-            '-c:v', av1_encoder, '-crf', '18', '-preset', '10',
-            '-y', tmp_path,
-        ]
-        proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
-        if (
-            proc.returncode != 0
-            or not os.path.isfile(tmp_path)
-            or os.path.getsize(tmp_path) == 0
-        ):
+
+        def build(use_hw):
+            hw = ['-hwaccel', 'auto'] if use_hw else []
+            return [
+                ffmpeg_bin, '-hide_banner', '-loglevel', 'error',
+                *hw,
+                '-ss', f'{t:.3f}', *ffmpeg_input_args(video_path, opts),
+                '-i', video_path, '-an', '-vf', vf, '-frames:v', '1',
+                '-c:v', av1_encoder, '-crf', '18', '-preset', '10',
+                '-y', tmp_path,
+            ]
+
+        global HWACCEL_DISABLED, HWACCEL_LAST_ERROR
+        use_hw = not HWACCEL_DISABLED
+        proc = subprocess.run(build(use_hw), capture_output=True, **_SUBPROCESS_NO_WINDOW)
+        ok = (
+            proc.returncode == 0
+            and tmp_path
+            and os.path.isfile(tmp_path)
+            and os.path.getsize(tmp_path) > 0
+        )
+        if not ok and use_hw:
+            err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
+            HWACCEL_LAST_ERROR = err or 'hwaccel failed'
+            proc = subprocess.run(build(False), capture_output=True, **_SUBPROCESS_NO_WINDOW)
+            ok = (
+                proc.returncode == 0
+                and tmp_path
+                and os.path.isfile(tmp_path)
+                and os.path.getsize(tmp_path) > 0
+            )
+            if ok:
+                HWACCEL_DISABLED = True
+        if not ok:
             err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
             raise ValueError(err or 'AVIF preview encode failed')
         with open(tmp_path, 'rb') as handle:
@@ -1556,40 +1837,50 @@ def render_scope_jpeg(video_path, time_sec, filters, input_opts=None):
     needs_native = bool(used_set & SCOPE_NATIVE_FRAME)
     needs_mvs = 'motion' in used_set
     needs_venc = 'qpmap' in used_set
-    cmd = [
-        ffmpeg_bin,
-        '-hide_banner',
-        '-loglevel', 'error',
-    ]
-    # Motion arrows need exported MVs; QP map needs VIDEO_ENC_PARAMS (H.264/VP9)
-    if needs_mvs:
-        cmd.extend(['-flags2', '+export_mvs'])
-    if needs_venc:
-        cmd.extend(['-export_side_data', '+venc_params'])
-    # Seek after open when side-data filters are active so the decoder can export them
+
+    def build(use_hw):
+        # Side-data scopes need software decode; hwaccel strips MV/venc params.
+        hw = ['-hwaccel', 'auto'] if (use_hw and not needs_native) else []
+        cmd = [
+            ffmpeg_bin,
+            '-hide_banner',
+            '-loglevel', 'error',
+            *hw,
+        ]
+        # Motion arrows need exported MVs; QP map needs VIDEO_ENC_PARAMS (H.264/VP9)
+        if needs_mvs:
+            cmd.extend(['-flags2', '+export_mvs'])
+        if needs_venc:
+            cmd.extend(['-export_side_data', '+venc_params'])
+        # Seek after open when side-data filters are active so the decoder can export them
+        if needs_native:
+            cmd.extend([
+                *ffmpeg_input_args(video_path, opts),
+                '-i', video_path,
+                '-ss', f'{t:.3f}',
+            ])
+        else:
+            cmd.extend([
+                '-ss', f'{t:.3f}',
+                *ffmpeg_input_args(video_path, opts),
+                '-i', video_path,
+            ])
+        cmd.extend([
+            '-an',
+            '-filter_complex', filter_complex,
+            '-map', '[out]',
+            '-frames:v', '1',
+            '-f', 'image2pipe',
+            '-vcodec', 'mjpeg',
+            '-q:v', '3',
+            'pipe:1',
+        ])
+        return cmd
+
     if needs_native:
-        cmd.extend([
-            *ffmpeg_input_args(video_path, opts),
-            '-i', video_path,
-            '-ss', f'{t:.3f}',
-        ])
+        proc = subprocess.run(build(False), capture_output=True, **_SUBPROCESS_NO_WINDOW)
     else:
-        cmd.extend([
-            '-ss', f'{t:.3f}',
-            *ffmpeg_input_args(video_path, opts),
-            '-i', video_path,
-        ])
-    cmd.extend([
-        '-an',
-        '-filter_complex', filter_complex,
-        '-map', '[out]',
-        '-frames:v', '1',
-        '-f', 'image2pipe',
-        '-vcodec', 'mjpeg',
-        '-q:v', '3',
-        'pipe:1',
-    ])
-    proc = subprocess.run(cmd, capture_output=True, **_SUBPROCESS_NO_WINDOW)
+        proc = run_ffmpeg_capture(build)
     if proc.returncode != 0 or not proc.stdout:
         err = (proc.stderr or b'').decode('utf-8', errors='replace').strip()
         raise ValueError(err or 'Scope preview failed')
@@ -1617,6 +1908,11 @@ def analyze_qp_for_path(video_path, input_opts=None):
             json_data['qp_available'] = qp_available
             json_data['qp_pending'] = False
             json_data['frames_pending'] = False
+            if not is_http_url(video_path):
+                try:
+                    json_data['cache_fingerprint'] = local_file_fingerprint(video_path, opts)
+                except OSError:
+                    pass
             with open(output_json_path, 'w') as f:
                 json.dump(json_data, f)
         except (OSError, json.JSONDecodeError):
@@ -1682,6 +1978,8 @@ def api_env():
         'desktop': bool(app.config.get('DESKTOP_MODE')),
         'frozen': is_frozen(),
         'version': version,
+        'hwaccel': 'off' if HWACCEL_DISABLED else 'auto',
+        'hwaccel_last_error': HWACCEL_LAST_ERROR or None,
     })
 
 
@@ -1803,9 +2101,11 @@ def preview_frame_route():
     time_sec = data.get('time', 0)
     width = data.get('width', 1920)
     fmt = data.get('format') or 'auto'
+    quality = data.get('quality') or 'full'
     try:
         payload, mime, used_fmt = render_preview_frame(
-            path, time_sec, max_width=width, input_opts=data.get('input'), fmt=fmt
+            path, time_sec, max_width=width, input_opts=data.get('input'),
+            fmt=fmt, quality=quality,
         )
         response = Response(payload, mimetype=mime)
         response.headers['Cache-Control'] = 'no-store'

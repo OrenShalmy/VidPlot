@@ -77,7 +77,9 @@
         let lastPlayTs = 0;
         let inFlight = false;
         let pendingTime = null;
+        let pendingQuality = "scrub";
         let seekDebounce = null;
+        let settleDebounce = null;
         let destroyed = false;
         const maxT = (Number.isFinite(duration) && duration > 0) ? duration : Infinity;
 
@@ -123,19 +125,25 @@
         function fetchFrame(time, opts) {
             const force = opts && opts.force;
             const fireSeeked = !opts || opts.seeked !== false;
+            const quality = (opts && opts.quality) || "full";
             if (!path || destroyed) return Promise.resolve();
             if (inFlight && !force) {
                 pendingTime = time;
+                pendingQuality = quality;
                 return Promise.resolve();
             }
             if (abortController) abortController.abort();
             abortController = new AbortController();
             const token = ++fetchToken;
             inFlight = true;
-            const width = Math.max(
+            const fullWidth = Math.max(
                 320,
                 Math.min(1920, Math.round((canvas?.clientWidth || 960) * (window.devicePixelRatio || 1)))
             );
+            // Scrub LOD: half width; server also forces JPEG for quality=scrub.
+            const width = quality === "scrub"
+                ? Math.max(160, Math.round(fullWidth / 2))
+                : fullWidth;
             const input = (window.vidplotInputByPath && window.vidplotInputByPath[path])
                 || window.vidplotJsonData?.format?.vidplot_input
                 || null;
@@ -146,6 +154,8 @@
                     path,
                     time,
                     width,
+                    quality,
+                    ...(quality === "scrub" ? { format: "jpeg" } : {}),
                     ...(input ? { input } : {}),
                 }),
                 signal: abortController.signal,
@@ -186,10 +196,21 @@
                     if (token === fetchToken) inFlight = false;
                     if (pendingTime !== null && !destroyed) {
                         const next = pendingTime;
+                        const nextQ = pendingQuality || "scrub";
                         pendingTime = null;
-                        fetchFrame(next, { seeked: true });
+                        pendingQuality = "scrub";
+                        fetchFrame(next, { seeked: nextQ === "full", quality: nextQ });
                     }
                 });
+        }
+
+        function scheduleSettleRefresh() {
+            if (settleDebounce) clearTimeout(settleDebounce);
+            settleDebounce = setTimeout(() => {
+                settleDebounce = null;
+                if (destroyed) return;
+                fetchFrame(currentTime, { seeked: true, quality: "full" });
+            }, 120);
         }
 
         function setCurrentTime(t, opts) {
@@ -197,9 +218,14 @@
             currentTime = clamped;
             if (seekDebounce) clearTimeout(seekDebounce);
             const delay = (opts && opts.immediate) ? 0 : 40;
+            const quality = (opts && opts.quality) || "scrub";
             seekDebounce = setTimeout(() => {
                 seekDebounce = null;
-                fetchFrame(currentTime, { seeked: true });
+                fetchFrame(currentTime, {
+                    seeked: quality === "full",
+                    quality,
+                });
+                if (quality === "scrub") scheduleSettleRefresh();
             }, delay);
         }
 
@@ -227,7 +253,7 @@
                 currentTime = maxT === Infinity ? currentTime : maxT;
                 paused = true;
                 stopPlayLoop();
-                fetchFrame(currentTime, { seeked: true }).then(() => {
+                fetchFrame(currentTime, { seeked: true, quality: "full" }).then(() => {
                     events.dispatch("pause");
                     events.dispatch("ended");
                 });
@@ -237,14 +263,15 @@
                 currentTime = 0;
                 paused = true;
                 stopPlayLoop();
-                fetchFrame(0, { seeked: true }).then(() => events.dispatch("pause"));
+                fetchFrame(0, { seeked: true, quality: "full" }).then(() => events.dispatch("pause"));
                 return;
             }
             currentTime = next;
             if (!inFlight) {
-                fetchFrame(currentTime, { seeked: false });
+                fetchFrame(currentTime, { seeked: false, quality: "scrub" });
             } else {
                 pendingTime = currentTime;
+                pendingQuality = "scrub";
                 events.dispatch("timeupdate");
             }
             playRaf = requestAnimationFrame(playLoop);
@@ -253,7 +280,7 @@
         showCanvas();
         const startT = Math.max(0, Number(initialTime) || 0);
         currentTime = Math.min(maxT === Infinity ? startT : maxT, startT);
-        fetchFrame(currentTime, { seeked: true, force: true }).then(() => {
+        fetchFrame(currentTime, { seeked: true, force: true, quality: "full" }).then(() => {
             events.dispatch("loadedmetadata");
             events.dispatch("loadeddata");
         });
@@ -331,6 +358,7 @@
                 destroyed = true;
                 stopPlayLoop();
                 if (seekDebounce) clearTimeout(seekDebounce);
+                if (settleDebounce) clearTimeout(settleDebounce);
                 if (abortController) abortController.abort();
                 fetchToken += 1;
             },

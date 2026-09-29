@@ -547,6 +547,9 @@ document.addEventListener("DOMContentLoaded", function () {
             const a = window.vidplotGetCompareSlot?.("A");
             if (a) {
                 a.videoUrl = window.vidplotCurrentVideoUrl || a.videoUrl;
+                if (Array.isArray(a.jsonData?.pts_times) && a.jsonData.pts_times.length && !a.frameTimes) {
+                    a.frameTimes = a.jsonData.pts_times;
+                }
                 enableSlotPreview("A", a, syncTime);
             }
         }
@@ -599,6 +602,9 @@ document.addEventListener("DOMContentLoaded", function () {
             previewMode: result.preview_hint === "ffmpeg" ? "ffmpeg" : "native",
             videoUrl: result.video_url,
         };
+        if (Array.isArray(jsonData?.pts_times) && jsonData.pts_times.length) {
+            slotData.frameTimes = jsonData.pts_times;
+        }
         if (typeof window.vidplotAssignCompareSlot === "function") {
             window.vidplotAssignCompareSlot(slot, slotData);
         }
@@ -619,10 +625,20 @@ document.addEventListener("DOMContentLoaded", function () {
             window.vidplotSelectCompareSlot(slot);
         }
 
+        // Kick B analysis without waiting on A's residual QP (generation tokens guard races).
         if (result.frames_pending || jsonData?.frames_pending || !(jsonData?.frames || []).length) {
             requestFramesAnalysis(sourcePath, jsonData, generation, { slot, compareGen: true });
-        } else if (result.qp_pending || jsonData?.qp_pending) {
-            requestQpAnalysis(sourcePath, generation, { slot, compareGen: true });
+        } else {
+            if (typeof setupPlotlyChart === "function" && typeof Plotly !== "undefined" && jsonData?.frames?.length) {
+                try {
+                    setupPlotlyChart(jsonData);
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            if (result.qp_pending || jsonData?.qp_pending) {
+                requestQpAnalysis(sourcePath, generation, { slot, compareGen: true });
+            }
         }
     }
 
