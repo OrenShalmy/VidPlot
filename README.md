@@ -94,7 +94,7 @@ Step-by-step UI walkthrough with screenshots: **[How to use](docs/how-to-use.md)
 - **Linux portable builds run Chromium without the SUID sandbox** (`--no-sandbox`) so zip/AppImage work without a root-owned helper. Prefer the AppImage for “Open with” / MIME associations.
 - Prefer sharing **local files** for review; URL open is for convenience demos.
 
-Supported containers and elementary streams include MP4, MOV, MKV, TS/M2TS, AVI, WebM, H.264/H.265/HEVC, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
+Supported containers and elementary streams include MP4, MOV, MKV, MXF, TS/M2TS, AVI, WebM, H.264/H.265/HEVC, plus **Y4M** and raw **YUV/RAW** (with decode params for headerless files).
 
 **Open with VidPlot:** after install, use **Open with → VidPlot** from Finder / Explorer / your file manager (or set VidPlot as the default app for a type in OS settings). On Windows use the **Setup** installer for associations; on Linux prefer the **AppImage**. MacOS zip of `.app` registers after the first launch.
 

@@ -886,12 +886,12 @@ function setupPlotlyChart(jsonData) {
         }
         layout.height = nextHeight;
         layout._vidplotCollapsed = collapsed;
-        // Peek mode: tiny plot + zoom dragmode eats clicks; disable drag and shrink chrome.
+        // Click-to-seek needs an inert drag layer; Zoom X on the modebar enables box zoom.
         const margin = collapsed
             ? { l: 8, r: 8, t: 2, b: 2 }
             : { l: 56, r: 24, t: 16, b: 40 };
         layout.margin = margin;
-        layout.dragmode = collapsed ? false : 'zoom';
+        layout.dragmode = false;
         layout.hovermode = collapsed ? 'x' : 'closest';
         const payload = {
             height: layout.height,
@@ -952,7 +952,8 @@ function setupPlotlyChart(jsonData) {
         paper_bgcolor: '#181c24',
         font: { color: '#e0e0e0', family: 'DM Sans, sans-serif', size: 12 },
         zoommode: 'x',
-        dragmode: 'zoom',
+        // false so empty-space clicks seek; use modebar "Zoom X" for box zoom
+        dragmode: false,
         showlegend: false,
         height: getChartHeight(),
         autosize: true,
@@ -993,12 +994,53 @@ function setupPlotlyChart(jsonData) {
         if (now - lastChartSeekMs < 40) return;
         lastChartSeekMs = now;
         const pts = chartXToFramePts(clickedTime);
-        const t = framePtsToMediaTime(pts);
+        const frames = jsonData.frames || [];
+        let mediaT;
+        let refIdx;
+        if (frames.length) {
+            // Snap to the nearest analyzed frame so empty-chart clicks land on a real sample.
+            refIdx = findFrameIndexByTime(pts, frames);
+            const framePts = parseFloat(frames[refIdx].best_effort_timestamp_time);
+            mediaT = framePtsToMediaTime(Number.isFinite(framePts) ? framePts : pts);
+        } else {
+            mediaT = framePtsToMediaTime(pts);
+        }
         const maxT = effectiveDuration();
-        const mediaT = Math.max(0, Math.min(maxT === Infinity ? t : maxT, t));
+        mediaT = Math.max(0, Math.min(maxT === Infinity ? mediaT : maxT, mediaT));
         if (!Number.isFinite(mediaT)) return;
         if (transport.shuttleRate < 0) pausePlayback();
-        seekToTime(mediaT, true);
+        seekToTime(mediaT, true, refIdx);
+    }
+
+    function chartTimeFromClientX(clientX) {
+        const chartDiv = document.getElementById('frameChart');
+        const full = chartDiv && chartDiv._fullLayout;
+        if (!full || !full.xaxis) return null;
+        const xa = full.xaxis;
+        const rect = chartDiv.getBoundingClientRect();
+        const xPixel = clientX - rect.left - (xa._offset || 0);
+        if (!(xa._length > 0)) return null;
+        if (xPixel < -2 || xPixel > xa._length + 2) return null;
+        if (typeof xa.p2l === 'function') {
+            const t = xa.p2l(xPixel);
+            return Number.isFinite(t) ? t : null;
+        }
+        const frac = Math.max(0, Math.min(1, xPixel / xa._length));
+        const range = (layout.xaxis && layout.xaxis.range) || [chartAxisMin(), chartAxisMax()];
+        const clickedTime = range[0] + frac * (range[1] - range[0]);
+        return Number.isFinite(clickedTime) ? clickedTime : null;
+    }
+
+    function clientIsInPlotArea(clientX, clientY) {
+        const chartDiv = document.getElementById('frameChart');
+        const full = chartDiv && chartDiv._fullLayout;
+        if (!full || !full.xaxis || !full.yaxis) return false;
+        const rect = chartDiv.getBoundingClientRect();
+        const xa = full.xaxis;
+        const ya = full.yaxis;
+        const x = clientX - rect.left - (xa._offset || 0);
+        const y = clientY - rect.top - (ya._offset || 0);
+        return x >= 0 && x <= (xa._length || 0) && y >= 0 && y <= (ya._length || 0);
     }
 
     // --- Plotly Chart Init ---
@@ -1026,24 +1068,42 @@ function setupPlotlyChart(jsonData) {
                 seekChartToTime(clickedTime);
             }
         });
-        // Peek strip: map raw x-position when point picking / zoom drag would miss
-        chartDiv.addEventListener('click', function(evt) {
-            if (typeof window.vidplotIsGraphCollapsed !== 'function' || !window.vidplotIsGraphCollapsed()) {
-                return;
-            }
+        // Capture-phase mouse handlers: Plotly's zoom drag layer (.nsewdrag) sits
+        // on top of the bars and often swallows bubble-phase pointer/click events
+        // on empty plot space. Track down→up; if movement is tiny, seek nearest frame.
+        let chartPointerDown = null;
+        function unbindChartSeek() {
+            if (!chartDiv._vidplotSeekDown) return;
+            chartDiv.removeEventListener('mousedown', chartDiv._vidplotSeekDown, true);
+            document.removeEventListener('mouseup', chartDiv._vidplotSeekUp, true);
+            chartDiv._vidplotSeekDown = null;
+            chartDiv._vidplotSeekUp = null;
+        }
+        unbindChartSeek();
+        chartDiv._vidplotSeekDown = function(evt) {
+            if (evt.button != null && evt.button !== 0) return;
             if (evt.target && evt.target.closest && evt.target.closest('.modebar')) return;
-            const full = chartDiv._fullLayout;
-            if (!full || !full.xaxis) return;
-            const xa = full.xaxis;
-            const plotLeft = chartDiv.getBoundingClientRect().left + (xa._offset || full.margin.l || 0);
-            const plotWidth = xa._length || 0;
-            if (plotWidth <= 0) return;
-            const frac = Math.max(0, Math.min(1, (evt.clientX - plotLeft) / plotWidth));
-            const range = (layout.xaxis && layout.xaxis.range) || [0, duration];
-            const clickedTime = range[0] + frac * (range[1] - range[0]);
-            if (!Number.isFinite(clickedTime)) return;
+            if (!clientIsInPlotArea(evt.clientX, evt.clientY)) return;
+            chartPointerDown = { x: evt.clientX, y: evt.clientY };
+        };
+        chartDiv._vidplotSeekUp = function(evt) {
+            if (!chartPointerDown) return;
+            const start = chartPointerDown;
+            chartPointerDown = null;
+            if (evt.button != null && evt.button !== 0) return;
+            if (evt.target && evt.target.closest && evt.target.closest('.modebar')) return;
+            const dx = Math.abs(evt.clientX - start.x);
+            const dy = Math.abs(evt.clientY - start.y);
+            // Anything larger is a Plotly zoom/pan gesture.
+            if (dx > 4 || dy > 4) return;
+            if (!clientIsInPlotArea(evt.clientX, evt.clientY)) return;
+            const clickedTime = chartTimeFromClientX(evt.clientX);
+            if (clickedTime == null) return;
             seekChartToTime(clickedTime);
-        });
+        };
+        chartDiv.addEventListener('mousedown', chartDiv._vidplotSeekDown, true);
+        // mouseup on document: Plotly may capture pointer on the drag layer
+        document.addEventListener('mouseup', chartDiv._vidplotSeekUp, true);
         chartDiv.on('plotly_relayout', function(eventData) {
             if (syncingZoomSlider) return;
             let range = null;

@@ -14,7 +14,7 @@ if (process.platform === 'linux') {
 }
 
 const VIDEO_EXTENSIONS = [
-    'mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'm2ts', 'mts',
+    'mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'm2ts', 'mts', 'mxf',
     'webm', 'h264', 'h265', 'hevc', 'yuv', 'raw', 'y4m',
 ];
 

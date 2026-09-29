@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, send_from_directory, render_template,
 from werkzeug.utils import secure_filename
 
 ALLOWED_EXTENSIONS = {
-    'mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'm2ts', 'mts',
+    'mp4', 'mov', 'm4v', 'mkv', 'avi', 'ts', 'm2ts', 'mts', 'mxf',
     'webm', 'h264', 'h265', 'hevc', 'yuv', 'raw', 'y4m',
 }
 DEFAULT_CONFIG = {
