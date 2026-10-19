@@ -510,13 +510,68 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    /**
+     * Wait until <video> paints a frame (or fail). Used to try native HEVC/etc.
+     * before falling back to ffmpeg→canvas.
+     */
+    function waitForNativeVideoFrame(video, timeoutMs) {
+        const ms = timeoutMs == null ? 2800 : timeoutMs;
+        return new Promise((resolve) => {
+            if (!video) {
+                resolve(false);
+                return;
+            }
+            let finished = false;
+            let frameCb = null;
+            const onError = () => done(false);
+            const onReady = () => {
+                if (video.videoWidth > 0 && video.readyState >= 2 && !video.error) {
+                    done(true);
+                }
+            };
+            function cleanup() {
+                video.removeEventListener("error", onError);
+                video.removeEventListener("loadeddata", onReady);
+                video.removeEventListener("canplay", onReady);
+                if (
+                    frameCb != null
+                    && typeof video.cancelVideoFrameCallback === "function"
+                ) {
+                    try {
+                        video.cancelVideoFrameCallback(frameCb);
+                    } catch (_) { /* ignore */ }
+                }
+            }
+            function done(ok) {
+                if (finished) return;
+                finished = true;
+                cleanup();
+                resolve(!!ok);
+            }
+            // Already have a frame (cached / fast path)
+            if (video.videoWidth > 0 && video.readyState >= 2 && !video.error) {
+                done(true);
+                return;
+            }
+            video.addEventListener("error", onError);
+            video.addEventListener("loadeddata", onReady);
+            video.addEventListener("canplay", onReady);
+            if (typeof video.requestVideoFrameCallback === "function") {
+                frameCb = video.requestVideoFrameCallback(() => done(true));
+            }
+            setTimeout(() => {
+                done(!!(video.videoWidth > 0 && video.readyState >= 2 && !video.error));
+            }, ms);
+        });
+    }
+
     function enableSlotPreview(slot, slotData, initialTime) {
         if (!slotData || typeof window.vidplotEnableSlotPreviewMode !== "function") return;
         const els = typeof window.vidplotGetCompareSlotElements === "function"
             ? window.vidplotGetCompareSlotElements(slot)
             : null;
-        window.vidplotEnableSlotPreviewMode(slot, {
-            mode: slotData.previewMode || "native",
+        const mode = slotData.previewMode || "native";
+        const common = {
             path: slotData.path,
             duration: parseFloat(slotData.jsonData?.format?.duration) || 0,
             jsonData: slotData.jsonData,
@@ -525,7 +580,25 @@ document.addEventListener("DOMContentLoaded", function () {
             video: els?.video,
             canvas: els?.canvas,
             source: els?.source,
-        });
+        };
+        window.vidplotEnableSlotPreviewMode(slot, { ...common, mode });
+
+        // Native-first slots: if Chromium never paints, switch that slot to ffmpeg.
+        if (mode === "native" && els?.video) {
+            const generation = slotData._previewProbeGen = (slotData._previewProbeGen || 0) + 1;
+            waitForNativeVideoFrame(els.video).then((ok) => {
+                if (generation !== slotData._previewProbeGen) return;
+                if (ok) return;
+                slotData.previewMode = "ffmpeg";
+                window.vidplotEnableSlotPreviewMode(slot, { ...common, mode: "ffmpeg" });
+                if (typeof window.vidplotBindCompareTransport === "function") {
+                    window.vidplotBindCompareTransport();
+                }
+                if (typeof window.vidplotBindPlayerMedia === "function") {
+                    window.vidplotBindPlayerMedia();
+                }
+            });
+        }
     }
 
     async function startCompareWithPath(pathB, inputOpts) {
@@ -806,6 +879,8 @@ document.addEventListener("DOMContentLoaded", function () {
             enablePreview("ffmpeg");
             notifySourceReady();
         } else {
+            // Prefer native <video> (HEVC/HLG/PQ via Chromium when available).
+            // Fall back to ffmpeg→canvas if decode fails or never paints a frame.
             if (videoSource && result.video_url) {
                 videoSource.src = result.video_url;
             }
@@ -828,7 +903,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 settled = true;
                 enablePreview("ffmpeg");
                 notifySourceReady();
-                // Chart may already be bound to <video> — rebind transport
                 if (
                     window.vidplotJsonData?.frames?.length
                     && typeof setupPlotlyChart === "function"
@@ -841,21 +915,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     }
                 }
             };
-            if (videoPlayer) {
-                videoPlayer.addEventListener("canplay", settleNative, { once: true });
-                videoPlayer.addEventListener("loadeddata", settleNative, { once: true });
-                videoPlayer.addEventListener("error", fallBackToFfmpeg, { once: true });
-                setTimeout(() => {
-                    if (settled || generation !== analysisGeneration) return;
-                    // No usable frame after a short wait — browser likely cannot decode
-                    if (!videoPlayer.videoWidth || videoPlayer.error) {
-                        fallBackToFfmpeg();
-                    } else {
-                        settleNative();
-                    }
-                }, 2500);
-            } else {
+            if (!videoPlayer) {
                 fallBackToFfmpeg();
+            } else {
+                waitForNativeVideoFrame(videoPlayer).then((ok) => {
+                    if (generation !== analysisGeneration || settled) return;
+                    if (ok) settleNative();
+                    else fallBackToFfmpeg();
+                });
             }
         }
 

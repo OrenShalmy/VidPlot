@@ -39,7 +39,7 @@ Toggle analyzers under the preview. FFmpeg renders scopes at the current frame; 
 | Motion vectors | FFmpeg codecview motion arrows (codec-dependent) |
 | QP map         | Per-macroblock QP tint + grid (H.264/VP9, etc.)  |
 
-Hard codecs (e.g. ProRes, HEVC, 10-bit 4:2:2) use an ffmpeg→canvas preview path with color-managed stills (WebP when available, otherwise PNG/AVIF/JPEG). Decode uses hardware acceleration when ffmpeg provides it, and scrubbing uses a lighter still until you settle on a frame.
+Hard codecs Chromium cannot play (e.g. ProRes, DNxHR, raw) use an ffmpeg→canvas path with color-managed stills (WebP when available, otherwise PNG/AVIF/JPEG). **HEVC tries native Chromium decode first** (so HLG/PQ can use the OS display path); if `<video>` errors or never paints a frame, VidPlot falls back to ffmpeg→canvas.
 
 ## Raw / uncompressed formats
 

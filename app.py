@@ -32,13 +32,13 @@ current_source_path = None
 # v= cache tokens → path (compare mode needs multiple clips servable via /media/source)
 opened_media_registry = {}
 
-# Codecs Chromium typically cannot play in <video> — use ffmpeg→canvas preview
+# Codecs Chromium typically cannot play in <video> — use ffmpeg→canvas preview.
+# HEVC is NOT listed: try native first (HLG/PQ / VideoToolbox). Client falls back
+# to ffmpeg→canvas if <video> errors or never paints a frame.
 HARD_PREVIEW_CODECS = frozenset({
     'prores', 'prores_aw', 'prores_ks', 'prores_lt', 'prores_hq',
     'prores_4444', 'prores_xq', 'prores_vlog',
     'dnxhd', 'dnxhr', 'v210', 'rawvideo', 'yuv4', 'wrapped_avframe',
-    # HEVC in MPEG-TS / MP4 often fails silently (black <video>) in Electron/Chromium
-    'hevc', 'h265', 'hev1', 'hvc1',
 })
 
 # Windows: ffmpeg/ffprobe are console apps; without this, each spawn flashes a CMD window.

@@ -137,7 +137,7 @@ Under the preview, toggle:
 
 **Overlays** shows or hides the live PiP of the picture and the axis legend on top of scopes.
 
-Scopes update for the **current frame**. Hard codecs (for example ProRes) use the ffmpeg preview path so scrubbing and scopes still work when the browser cannot decode natively. Waveform / parade / histogram / vectorscope seeks use the same hardware-decode path as preview; motion-vector and QP-map scopes stay on software decode so side data is preserved.
+Scopes update for the **current frame**. Codecs Chromium cannot play (for example ProRes) use the ffmpeg preview path. HEVC tries native decode first and falls back to ffmpeg→canvas if needed. Waveform / parade / histogram / vectorscope seeks use the same hardware-decode path as preview; motion-vector and QP-map scopes stay on software decode so side data is preserved.
 
 ![Waveform and RGB parade scopes](howto/howto-07-scopes.png)
 
